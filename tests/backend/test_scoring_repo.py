@@ -49,7 +49,9 @@ def test_get_scoring_rows_returns_matched_lots_with_checkpoint_fields(tmp_path, 
         assert row["en_cca_10s_voltage"] == 7.7
         assert row["en_cca_6v_hold_sec"] == 95.0
         assert row["sae_cca_7v2_hold_sec"] == 33.0
-        assert row["spec_lower_y"] is None  # SPEC 하한 미설정이면 NULL(지어내지 않음)
+        # §10-11 확정(2026-09-27) — override 없으면 전체 공통 기본값(90%/95%)이 채워진다.
+        assert row["spec_lower_y"] == 90.0
+        assert row["spec_lower_z"] == 95.0
     finally:
         conn.close()
 

@@ -33,14 +33,35 @@ def _setup_db(tmp_path, monkeypatch):
     return repo.get_connection()
 
 
-def test_spec_compliance_reports_zero_models_when_no_spec_set(tmp_path, monkeypatch):
+def test_spec_compliance_applies_default_when_no_override_set(tmp_path, monkeypatch):
+    """§10-11 확정(2026-09-27) — ConstantsByModel에 형명별 override가 전혀 없어도, Y=90%/Z=95%
+    전체 공통 기본값(config.spec_thresholds)이 적용돼 판정 가능한 상태가 된다(더 이상 0건)."""
     conn = _setup_db(tmp_path, monkeypatch)
     try:
+        # retention_rate = (5900-250)/5900*100 = 95.76% >= 기본값 90 -> pass
         repo.ingest_process_rows(conn, [_process_row("LOT_A", "AGM90_S1", "5900", "250")])
         summary = repo.get_spec_compliance_summary(conn)
-        assert summary["models_with_spec"] == 0
-        assert summary["y_evaluated"] == 0
-        assert summary["z_evaluated"] == 0
+        assert summary["models_with_spec"] == 1
+        assert summary["y_evaluated"] == 1
+        assert summary["y_fail"] == 0
+        assert summary["z_evaluated"] == 0  # 시험 데이터 없음 — capacity_rate 자체가 NULL
+        assert summary["spec_lower_y_min"] == 90.0
+        assert summary["spec_lower_y_max"] == 90.0
+        assert summary["spec_lower_z_min"] == 95.0
+        assert summary["spec_lower_z_max"] == 95.0
+    finally:
+        conn.close()
+
+
+def test_spec_compliance_default_catches_fail_without_override(tmp_path, monkeypatch):
+    """override 없이도 기본값 90%가 실제로 강제되는지(단순히 존재만 하는 게 아니라) 확인."""
+    conn = _setup_db(tmp_path, monkeypatch)
+    try:
+        # retention_rate = (5900-900)/5900*100 = 84.7% < 기본값 90 -> fail
+        repo.ingest_process_rows(conn, [_process_row("LOT_FAIL", "AGM90_S1", "5900", "900")])
+        summary = repo.get_spec_compliance_summary(conn)
+        assert summary["y_evaluated"] == 1
+        assert summary["y_fail"] == 1
     finally:
         conn.close()
 

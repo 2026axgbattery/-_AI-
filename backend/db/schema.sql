@@ -102,8 +102,8 @@ CREATE TABLE IF NOT EXISTS ConstantsByModel (
     free_volume             REAL,   -- 동일
     design_fill_weight      REAL,
     fill_sg                 REAL,
-    spec_lower_y            REAL,   -- §10 Open Question #11 확정 전까지 NULL 허용
-    spec_lower_z            REAL    -- 동일
+    spec_lower_y            REAL,   -- 형명별 override 전용(§10 Open Question #11 확정, 2026-09-27).
+    spec_lower_z            REAL    -- NULL이면 전체 공통 기본값(config.spec_thresholds의 90%/95%) 적용.
 );
 
 -- =========================================================

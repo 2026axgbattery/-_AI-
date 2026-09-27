@@ -23,6 +23,7 @@ from backend.analysis.regression import (
     fit_xy_to_sae_cca_hold7v2,
     predict,
 )
+from backend.config.spec_thresholds import DEFAULT_SPEC_LOWER_Y, DEFAULT_SPEC_LOWER_Z
 from backend.db import repository as repo
 
 router = APIRouter(prefix="/api", tags=["prediction"])
@@ -279,7 +280,7 @@ def predict_manual(payload: ManualPredictRequest):
             conn, None, y_run["run_id"], "y", predicted_y, None, "manual"
         )
 
-        thresholds = repo.get_spec_threshold_for_model(conn, payload.model_name) or {}
+        thresholds = repo.get_spec_threshold_for_model(conn, payload.model_name)
         y_spec = _judge_and_maybe_save(
             conn, None, y_prediction_id, "y", predicted_y, thresholds.get("spec_lower_y")
         )
@@ -374,13 +375,19 @@ def predict_batch_unmatched():
             model_name = lot["model_name"]
             model_thresholds = thresholds_by_model.get(model_name, {})
 
+            spec_lower_y = model_thresholds.get("spec_lower_y")
+            if spec_lower_y is None:
+                spec_lower_y = DEFAULT_SPEC_LOWER_Y
+            spec_lower_z = model_thresholds.get("spec_lower_z")
+            if spec_lower_z is None:
+                spec_lower_z = DEFAULT_SPEC_LOWER_Z
+
             predicted_y = predict(y_run["coefficients"], y_run["intercept"], x)
             y_prediction_id = repo.save_prediction(
                 conn, lot["lot_id"], y_run["run_id"], "y", predicted_y, None, "batch_unmatched"
             )
             y_spec = _judge_and_maybe_save(
-                conn, lot["lot_id"], y_prediction_id, "y", predicted_y,
-                model_thresholds.get("spec_lower_y"),
+                conn, lot["lot_id"], y_prediction_id, "y", predicted_y, spec_lower_y,
             )
             _diagnose_if_fail(
                 conn, lot["lot_id"], y_prediction_id, "y", y_spec["spec_result"],
@@ -402,8 +409,7 @@ def predict_batch_unmatched():
                     conn, lot["lot_id"], z_run["run_id"], "z", predicted_z, "predicted", "batch_unmatched"
                 )
                 z_spec = _judge_and_maybe_save(
-                    conn, lot["lot_id"], z_prediction_id, "z", capacity_rate_pred,
-                    model_thresholds.get("spec_lower_z"),
+                    conn, lot["lot_id"], z_prediction_id, "z", capacity_rate_pred, spec_lower_z,
                 )
                 _diagnose_if_fail(
                     conn, lot["lot_id"], z_prediction_id, "z", z_spec["spec_result"],

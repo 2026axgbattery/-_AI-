@@ -90,6 +90,11 @@ export interface KpiSummary {
   matched_lots: number;
   match_rate: number;
   avg_retention_rate: number | null;
+  avg_capacity_rate: number | null;
+  en_cca_evaluated: number;
+  en_cca_pass: number;
+  sae_cca_evaluated: number;
+  sae_cca_pass: number;
 }
 
 export interface SpecComplianceSummary {
@@ -98,6 +103,10 @@ export interface SpecComplianceSummary {
   z_evaluated: number;
   z_fail: number;
   models_with_spec: number;
+  spec_lower_y_min: number | null;
+  spec_lower_y_max: number | null;
+  spec_lower_z_min: number | null;
+  spec_lower_z_max: number | null;
 }
 
 // Day 2 — ③-3/③-4 형명별 상세·추이
@@ -409,8 +418,15 @@ export const apiClient = {
       handle<AnalysisRunResult>(r)
     ),
 
-  getYVsCca: () =>
-    fetch(`${API_BASE_URL}/api/analysis/y-vs-cca`).then((r) => handle<{ pairs: YVsCcaPair[] }>(r)),
+  getYVsCca: (opts?: { limit?: number; sort?: "lot_id" | "worst" }) => {
+    const params = new URLSearchParams();
+    if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+    if (opts?.sort) params.set("sort", opts.sort);
+    const qs = params.toString();
+    return fetch(`${API_BASE_URL}/api/analysis/y-vs-cca${qs ? `?${qs}` : ""}`).then((r) =>
+      handle<{ pairs: YVsCcaPair[]; total_count: number }>(r)
+    );
+  },
 
   getKpi: () => fetch(`${API_BASE_URL}/api/kpi`).then((r) => handle<KpiSummary>(r)),
 

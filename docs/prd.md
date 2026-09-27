@@ -98,7 +98,7 @@ TestData(lot_id당 1행, 부분매칭): initial_voltage/resistance/weight/cca ·
 
 ConstantsByModel: model_name(PK) · rated_capacity · saturation_basis_target('cell'|'separator')
   · void_volume_separator/plate·free_volume·design_fill_weight·fill_sg(전부 확보 불투명, §10-6)
-  · spec_lower_y·spec_lower_z(§10-11 미확정, NULL 허용)
+  · spec_lower_y·spec_lower_z(형명별 override 전용, §10-11 확정 이후 NULL=전체 공통 기본값 90%/95% 적용)
 
 ChargeProgramSpec(마스터, 재업로드 시 전체교체): rated_capacity · buyer_code('All'=전체적용)
   · program_label·is_variant·charge_hours·total_charge_ah·total_electricity_c·steps_json
@@ -128,11 +128,11 @@ CauseDiagnosis: lot_id/prediction_id(FK) · target(위와 동일) · ranked_fact
 
 ## 10. 미해결 질문 (Open Questions, 번호 고정 — 코드·문서에서 인용됨)
 
-**해결됨**: 1) Z=`discharge_amount`, capacity_rate는 %표현, charge_amount_20h는 Z 아님(§10-1). 2) 정규화는 물리적 무차원화(charge_ratio 등)로 확정. 3) 모델 수는 28개 아닌 **35개**. 4) `fill_weight`/`water_loss`는 1단 X에서 반드시 제외. 5) MT(V)/(A)는 시험전용 측정값(완성전압 편차·간이 CCA), 1단 X 제외 확정. 19) `model_name` 접미문자=바이어/스펙 구분코드로 확정 채택(`ChargeProgramSpec.buyer_code`에 반영).
+**해결됨**: 1) Z=`discharge_amount`, capacity_rate는 %표현, charge_amount_20h는 Z 아님(§10-1). 2) 정규화는 물리적 무차원화(charge_ratio 등)로 확정. 3) 모델 수는 28개 아닌 **35개**. 4) `fill_weight`/`water_loss`는 1단 X에서 반드시 제외. 5) MT(V)/(A)는 시험전용 측정값(완성전압 편차·간이 CCA), 1단 X 제외 확정. 8) `charge_amount`는 **충전 레시피의 목표치**이며 실측치가 아님으로 확정(2026-09-27) — `charge_ratio`/`charge_program_deviation_pct`도 "실측 충전량"이 아니라 "목표 충전량" 기준 지표로 해석해야 함. 11) **Y·Z SPEC 하한 확정(2026-09-27)** — 포화도(Y) 90% 이상, 20시간 용량(Z, capacity_rate) 95% 이상을 **35개 형명 전체 공통**으로 적용(`backend/config/spec_thresholds.py`의 `DEFAULT_SPEC_LOWER_Y/Z`, 형명별 override는 `ConstantsByModel`/SPEC 업로드로 여전히 가능하나 지금은 쓰지 않음). SAE/EN CCA(Z2/Z3)는 이 SPEC과 별개로 기존 EN 50342/SAE J537 고정 기준(`analysis/cca_spec.py`)을 그대로 유지. 19) `model_name` 접미문자=바이어/스펙 구분코드로 확정 채택(`ChargeProgramSpec.buyer_code`에 반영).
 
-**부분 해결**: 6) 포화도 basis는 모델마다 다르게 관리, source는 계산+실측 병행 확인됨 — 계산식 자체는 확보 불투명(설계기밀 가능성). 20) 수기입력 통합화면 확정, 단 **그룹값과 다른 예외 로트 편집 경로는 미해결**(개별편집 API는 존치·화면 미연결).
+**부분 해결**: 6) 포화도 basis는 모델마다 다르게 관리, source는 계산+실측 병행 확인됨 — 계산식 자체는 확보 불투명(설계기밀 가능성). 7) water_loss 이론치 대비 실측 ~139배 불일치는 **데이터 오류로 판단, 원인 규명은 보류하고 해당 지표(`theoretical_water_loss`/`water_loss_residual`)는 당분간 분석·원인진단·이상탐지에서 제외(2026-09-27 확정)** — SOP 자체가 무엇인지 규명된 것은 아니라 "부분 해결"로 분류. 20) 수기입력 통합화면 확정, 단 **그룹값과 다른 예외 로트 편집 경로는 미해결**(개별편집 API는 존치·화면 미연결).
 
-**여전히 담당자 확인 필요**: 7) water_loss 측정 SOP(이론치 대비 실측 ~139배 불일치 원인). 8) charge_amount가 레시피 목표치인지 실측치인지. 9) 화성 후 비중 데이터 확보 가능성. 10) 모델별 공극부피 상수 확보 가능성. 11) Y·Z SPEC 하한값(모델별). 12) 원인 인자 동률 처리 규칙. 13) 유관부서 열람 경로(IP 공유 vs 파일 공유). 14) `tested_at` 실제 데이터 존재 여부. 15) 시험주기 정확한 확정(MVP는 이벤트 기반 재학습으로 대응). 16) 형명별 최소 표본 임계값 n(예시 5). 17) 상관계수에 p-value 배지 표시 여부. 18) 포화도 정의의 SOC·압착률 전제조건.
+**여전히 담당자 확인 필요**: 9) 화성 후 비중 데이터 확보 가능성. 10) 모델별 공극부피 상수 확보 가능성. 12) 원인 인자 동률 처리 규칙. 13) 유관부서 열람 경로(IP 공유 vs 파일 공유). 14) `tested_at` 실제 데이터 존재 여부. 15) 시험주기 정확한 확정(MVP는 이벤트 기반 재학습으로 대응). 16) 형명별 최소 표본 임계값 n(예시 5). 17) 상관계수에 p-value 배지 표시 여부. 18) 포화도 정의의 SOC·압착률 전제조건.
 
 ## 11. 관련 문서
 

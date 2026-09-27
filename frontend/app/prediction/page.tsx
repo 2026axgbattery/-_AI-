@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { TopBar } from "@/components/TopBar";
+import { StepFlow } from "@/components/StepFlow";
 import { CausesList } from "@/components/CausesList";
+import { StatusStackedBarChart } from "@/components/charts/StatusStackedBarChart";
 import { extractBuyerCode } from "@/lib/buyer";
-import { X_COLUMN_LABELS, X_COLUMN_ORDER, specBadge } from "@/lib/diagnosis";
+import { X_COLUMN_EXAMPLES, X_COLUMN_LABELS, X_COLUMN_ORDER, specBadge } from "@/lib/diagnosis";
 import {
   apiClient,
   ApiError,
@@ -56,6 +57,15 @@ function batchSeverity(row: BatchUnmatchedResultRow): number {
 function fmt(v: number | null | undefined, digits = 1): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
   return v.toFixed(digits);
+}
+
+/** 직전 실행 대비 변화량 — "이 조건을 바꾸면 Y·Z가 어떻게 달라지는지"를 재실행할 때마다
+ * 바로 보여주기 위한 것(2026-09-27 요청). 같은 세션 안의 바로 이전 예측과만 비교한다. */
+function deltaLabel(curr: number | null | undefined, prev: number | null | undefined, digits = 1): string | null {
+  if (curr == null || prev == null || Number.isNaN(curr) || Number.isNaN(prev)) return null;
+  const diff = curr - prev;
+  if (Math.abs(diff) < 5 * 10 ** -(digits + 1)) return "변화 없음";
+  return `${diff >= 0 ? "+" : ""}${diff.toFixed(digits)}`;
 }
 
 function badgeToneLabel(tone: "pass" | "fail" | "unknown"): string {
@@ -115,7 +125,9 @@ function buildGroupBars(
 }
 
 /** 형명별/바이어별/날짜별 판정 분포를 막대(양품=그린/부적합=오렌지/판정불가=그레이) 하나당
- * 그룹 하나로 시각화한다. 막대를 클릭하면 그 그룹으로 아래 표를 드릴다운한다. */
+ * 그룹 하나로 시각화한다. 막대를 클릭하면 그 그룹으로 아래 표를 드릴다운한다. 실제 막대 렌더링은
+ * Recharts 기반 `StatusStackedBarChart`가 담당(2026-09-27, `.docs/33`) — 이 함수는 범례·빈
+ * 상태 안내를 둘러싼 래퍼만 유지한다. */
 function GroupBarChart({
   bars,
   selectedKey,
@@ -145,31 +157,7 @@ function GroupBarChart({
           <span className="batch-chart-dot" style={{ background: "var(--sebang-gray-400)" }} />판정불가
         </span>
       </div>
-      {bars.map((bar) => (
-        <button
-          key={bar.key}
-          type="button"
-          className={`batch-chart-row${selectedKey === bar.key ? " selected" : ""}`}
-          onClick={() => onSelect(selectedKey === bar.key ? "" : bar.key)}
-        >
-          <span className="batch-chart-label" title={bar.key}>
-            {bar.key}
-            {todayKey && bar.key === todayKey && <span className="batch-chart-today-tag">오늘</span>}
-          </span>
-          <span className="batch-chart-track">
-            {bar.pass > 0 && <span className="batch-chart-seg pass" style={{ flexGrow: bar.pass }} />}
-            {bar.fail > 0 && (
-              <span className="batch-chart-seg fail" style={{ flexGrow: bar.fail, minWidth: "6px" }} />
-            )}
-            {bar.unknown > 0 && (
-              <span className="batch-chart-seg unknown" style={{ flexGrow: bar.unknown, minWidth: "6px" }} />
-            )}
-          </span>
-          <span className="batch-chart-count">
-            <b>{bar.count}</b>건{bar.fail > 0 ? ` · 부적합 ${bar.fail}` : ""}
-          </span>
-        </button>
-      ))}
+      <StatusStackedBarChart bars={bars} selectedKey={selectedKey} onSelect={onSelect} todayKey={todayKey} />
     </div>
   );
 }
@@ -242,8 +230,8 @@ function buildVerdict(result: ManualPredictResponse): {
   }
   if (!anyConfigured) {
     return {
-      headline: "SPEC 임계값이 아직 설정되지 않아 판정할 수 없습니다",
-      desc: "예측값 자체는 계산됐지만, 이 모델의 SPEC 하한(spec_lower_y/z)이 업로드되지 않아 양품/부적합을 가릴 수 없습니다. SPEC 임계값 업로드 후 다시 확인하세요.",
+      headline: "이 조건으로는 판정할 수 없습니다",
+      desc: "예측값 자체를 계산할 수 없어(예: 모델명에서 정격용량을 읽을 수 없음) 양품/부적합을 가릴 수 없습니다. 모델명·입력값을 확인하고 다시 시도하세요.",
       tone: "unknown",
     };
   }
@@ -262,6 +250,9 @@ export default function PredictionPage() {
   const [modelName, setModelName] = useState("AGM90_S1");
   const [xValues, setXValues] = useState<Record<string, string>>({});
   const [manualResult, setManualResult] = useState<ManualPredictResponse | null>(null);
+  // 바로 이전 실행 결과 — "조건을 바꾸면 Y·Z가 어떻게 달라지는지"를 재실행할 때마다 델타로
+  // 보여주기 위함(세션 복원 대상 아님, 새로고침하면 초기화돼도 무방한 보조 정보).
+  const [previousManualResult, setPreviousManualResult] = useState<ManualPredictResponse | null>(null);
   const [manualError, setManualError] = useState<string | null>(null);
   const [manualLoading, setManualLoading] = useState(false);
 
@@ -408,7 +399,19 @@ export default function PredictionPage() {
     [scopedBatchRows]
   );
 
+  /** 처음 여는 사람은 9개 입력 칸이 전부 비어 있으면 뭘 넣어야 할지 감이 안 잡힌다 — 대표
+   * 예시값을 한 번에 채워 일단 결과부터 보고, 그다음 값을 하나씩 바꿔가며 Y·Z가 어떻게
+   * 달라지는지 확인하는 흐름을 유도한다(2026-09-27 요청). */
+  function handleFillExample() {
+    const next: Record<string, string> = {};
+    for (const col of X_COLUMN_ORDER) {
+      next[col] = String(X_COLUMN_EXAMPLES[col]);
+    }
+    setXValues(next);
+  }
+
   async function handleManualSubmit() {
+    const prevResult = manualResult;
     setManualLoading(true);
     setManualError(null);
     setManualResult(null);
@@ -430,6 +433,7 @@ export default function PredictionPage() {
         x[col] = parsed;
       }
       const result = await apiClient.predictManual(modelName, x);
+      setPreviousManualResult(prevResult);
       setManualResult(result);
       setManualRestored(false);
     } catch (err) {
@@ -466,24 +470,34 @@ export default function PredictionPage() {
   }
 
   const verdict = manualResult ? buildVerdict(manualResult) : null;
+  const yDelta =
+    manualResult && previousManualResult
+      ? deltaLabel(manualResult.y.predicted_value, previousManualResult.y.predicted_value)
+      : null;
+  const currZ = manualResult?.z;
+  const prevZ = previousManualResult?.z;
+  const zDelta =
+    currZ?.available && prevZ?.available
+      ? deltaLabel(currZ.predicted_capacity_rate, prevZ.predicted_capacity_rate)
+      : null;
+  const currSae = manualResult?.sae_cca;
+  const prevSae = previousManualResult?.sae_cca;
+  const saeDelta =
+    currSae?.available && prevSae?.available
+      ? deltaLabel(currSae.predicted_value, prevSae.predicted_value, 3)
+      : null;
+  const currEn = manualResult?.en_cca;
+  const prevEn = previousManualResult?.en_cca;
+  const enDelta =
+    currEn?.available && prevEn?.available
+      ? deltaLabel(currEn.predicted_value, prevEn.predicted_value, 3)
+      : null;
 
   return (
     <div className="app">
       <TopBar active="예측" />
 
-      <div className="steps">
-        <Link href="/upload" className="step done">
-          <span className="step-num">✓</span> ① 업로드
-        </Link>
-        <span className="step-sep" />
-        <Link href="/dashboard" className="step done">
-          <span className="step-num">✓</span> ② 결과 확인
-        </Link>
-        <span className="step-sep" />
-        <span className="step active">
-          <span className="step-num">3</span> ③ 상세 조회 (지금 여기)
-        </span>
-      </div>
+      <StepFlow current="prediction" />
 
       <div className="page-head">
         <div>
@@ -498,10 +512,10 @@ export default function PredictionPage() {
 
       <div className="tabs">
         <button className={`tab${tab === "manual" ? " active" : ""}`} onClick={() => setTab("manual")}>
-          조건 시뮬레이션 (수동 입력, 선택적)
+          조건을 바꾸면 결과가 어떻게 될까?
         </button>
         <button className={`tab${tab === "batch" ? " active" : ""}`} onClick={() => setTab("batch")}>
-          미매칭 로트 예측 (로트·형명·바이어별)
+          시험 전 로트는 지금 어떨까?
         </button>
       </div>
 
@@ -510,9 +524,12 @@ export default function PredictionPage() {
           <div className="alert">
             <span>ℹ️</span>
             <div>
-              이 탭은 실제 로트를 위한 필수 입력 화면이 아닙니다. &quot;조건을 이렇게 바꾸면 결과가
-              어떻게 될까&quot;를 미리 가정해보는 <b>선택적 시뮬레이션 도구</b>입니다. 실제 미매칭
-              로트에 대한 예측은 옆 탭에서 업로드된 데이터로 자동 계산됩니다.
+              공정 조건(X) 하나를 바꿔보고 그 결과 포화도(Y)·20시간 용량(Z)·CCA가 어떻게 달라지는지
+              바로 확인하는 <b>선택적 시뮬레이션 도구</b>입니다(실제 로트를 위한 필수 입력 화면이
+              아닙니다). 처음이라 값 감이 안 잡히면 아래 <b>&ldquo;예시값으로 채우기&rdquo;</b>를 눌러
+              결과부터 먼저 보고, 값을 하나씩 바꿔가며 재실행해 보세요 — 바뀐 조건과 이전 예측의
+              차이를 결과 카드에 바로 같이 보여줍니다. 실제 미매칭 로트에 대한 예측은{" "}
+              <b>옆 탭</b>에서 업로드된 데이터로 자동 계산됩니다.
             </div>
           </div>
 
@@ -562,6 +579,12 @@ export default function PredictionPage() {
                       <b>{manualResult!.y.spec.deviation! >= 0 ? "+" : ""}{fmt(manualResult!.y.spec.deviation)}%p</b>
                     </div>
                   )}
+                  {yDelta && (
+                    <div className="vc-sub vc-delta">
+                      이전 예측 대비 {yDelta}
+                      {yDelta !== "변화 없음" ? "%p" : ""}
+                    </div>
+                  )}
                 </div>
                 <div
                   className={`verdict-card status-${
@@ -588,6 +611,12 @@ export default function PredictionPage() {
                     <div className="vc-sub">
                       방전량 {fmt(manualResult!.z.predicted_discharge_amount, 2)}Ah · ⚠ 실측 Y가 아닌
                       1단 예측값(Ŷ)으로 산출됨(input_y_source: predicted)
+                    </div>
+                  )}
+                  {zDelta && (
+                    <div className="vc-sub vc-delta">
+                      이전 예측 대비 {zDelta}
+                      {zDelta !== "변화 없음" ? "%p" : ""}
                     </div>
                   )}
                 </div>
@@ -625,6 +654,9 @@ export default function PredictionPage() {
                       (합격 기준 ≥30초) — 방전량(Ah)이 아니라 이 체크포인트로 합격 여부를 가립니다.
                     </div>
                   )}
+                  {saeDelta && (
+                    <div className="vc-sub vc-delta">이전 예측 대비 {saeDelta}{saeDelta !== "변화 없음" ? "Ah" : ""}</div>
+                  )}
                 </div>
                 <div
                   className={`verdict-card status-${
@@ -658,6 +690,9 @@ export default function PredictionPage() {
                       아니라 이 체크포인트 2개로 합격 여부를 가립니다.
                     </div>
                   )}
+                  {enDelta && (
+                    <div className="vc-sub vc-delta">이전 예측 대비 {enDelta}{enDelta !== "변화 없음" ? "Ah" : ""}</div>
+                  )}
                 </div>
               </div>
             </>
@@ -673,6 +708,9 @@ export default function PredictionPage() {
                 <div className="card">
                   <div className="card-head">
                     <h3>조건 입력 (X)</h3>
+                    <button type="button" className="raw-data-toggle" onClick={handleFillExample}>
+                      예시값으로 채우기
+                    </button>
                   </div>
                   <div className="form-grid">
                     <div className="field field-full" style={{ gridColumn: "1 / -1" }}>
@@ -691,7 +729,7 @@ export default function PredictionPage() {
                           type="text"
                           value={xValues[col] ?? ""}
                           onChange={(e) => setXValues((prev) => ({ ...prev, [col]: e.target.value }))}
-                          placeholder="예: 31.2"
+                          placeholder={`예: ${X_COLUMN_EXAMPLES[col]}`}
                         />
                       </div>
                     ))}
@@ -876,25 +914,25 @@ export default function PredictionPage() {
                   <div className="insight-card">
                     <div className="insight-label">Y(포화도) 판정</div>
                     <div className="insight-value">
-                      양품 {batchSummary.yPass}건 · 부적합 {batchSummary.yFail}건
+                      양품 {batchSummary.yPass}건<br />부적합 {batchSummary.yFail}건
                     </div>
                   </div>
                   <div className="insight-card">
                     <div className="insight-label">Z(20시간 용량) 판정</div>
                     <div className="insight-value">
-                      양품 {batchSummary.zPass}건 · 부적합 {batchSummary.zFail}건
+                      양품 {batchSummary.zPass}건<br />부적합 {batchSummary.zFail}건
                     </div>
                   </div>
                   <div className="insight-card">
                     <div className="insight-label">Z2(SAE CCA) 판정</div>
                     <div className="insight-value">
-                      양품 {batchSummary.saePass}건 · 부적합 {batchSummary.saeFail}건
+                      양품 {batchSummary.saePass}건<br />부적합 {batchSummary.saeFail}건
                     </div>
                   </div>
                   <div className="insight-card">
                     <div className="insight-label">Z3(EN CCA) 판정</div>
                     <div className="insight-value">
-                      양품 {batchSummary.enPass}건 · 부적합 {batchSummary.enFail}건
+                      양품 {batchSummary.enPass}건<br />부적합 {batchSummary.enFail}건
                     </div>
                   </div>
                 </div>

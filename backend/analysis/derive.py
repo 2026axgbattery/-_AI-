@@ -34,6 +34,10 @@ def compute_lot_derived(row: dict) -> dict:
     has_fill_data = fill_weight is not None and water_loss is not None
     retention_rate = (fill_weight - water_loss) / fill_weight * 100 if has_fill_data else None
 
+    # theoretical_water_loss/water_loss_residual: 이론치 대비 실측이 ~139배 차이 나는 것을 사용자가
+    # 데이터 오류로 확인(§10-7, 2026-09-27) — SOP 자체가 규명된 것은 아니라 계산은 그대로 두되(값
+    # 자체가 나쁘진 않으니 저장은 계속), 원인진단·이상탐지 등 해석에는 당분간 쓰지 않는다(어디서도
+    # 소비하지 않음, docs/prd.md §10 참조).
     overcharge_ah = (charge_amount - rated_capacity) if charge_amount is not None else None
     theoretical_water_loss = (
         WATER_LOSS_PER_OVERCHARGE_AH * overcharge_ah if overcharge_ah is not None else None

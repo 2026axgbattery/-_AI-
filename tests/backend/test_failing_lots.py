@@ -63,12 +63,17 @@ def test_get_failing_lots_returns_only_spec_violations(tmp_path, monkeypatch):
         conn.close()
 
 
-def test_get_failing_lots_empty_without_spec_thresholds(tmp_path, monkeypatch):
+def test_get_failing_lots_uses_default_without_spec_thresholds(tmp_path, monkeypatch):
+    """§10-11 확정(2026-09-27) — ConstantsByModel 행 자체가 없어도(override 미설정) 전체 공통
+    기본값(90%/95%)이 적용돼 미달 로트가 정상적으로 잡혀야 한다(더 이상 빈 배열이 아님)."""
     conn = _setup_db(tmp_path, monkeypatch)
     try:
+        # retention_rate = (5900-900)/5900*100 = 84.7% < 기본값 90, capacity 80.0 < 기본값 95
         repo.ingest_process_rows(conn, [_process_row("LOT_A", "AGM90_S1", "5900", "900")])
         repo.ingest_test_rows(conn, [_test_row("LOT_A", "80.0")])
-        # SPEC 미설정(ConstantsByModel 행 자체가 없음) -> get_failing_lots는 아무것도 반환하지 않아야 함
-        assert repo.get_failing_lots(conn) == []
+        failing = repo.get_failing_lots(conn)
+        assert {r["lot_id"] for r in failing} == {"LOT_A"}
+        assert failing[0]["spec_lower_y"] == 90.0
+        assert failing[0]["spec_lower_z"] == 95.0
     finally:
         conn.close()

@@ -3,7 +3,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { TopBar } from "@/components/TopBar";
+import { StepFlow } from "@/components/StepFlow";
 import { BatteryGauge } from "@/components/BatteryGauge";
+import { TrendLineChart } from "@/components/charts/TrendLineChart";
 import { CausesList } from "@/components/CausesList";
 import {
   apiClient,
@@ -102,8 +104,6 @@ function ccaCellText(pass: number, evaluated: number): string {
 }
 
 function TrendChart({ points }: { points: ModelTrendResponse["points"] }) {
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-
   if (points.length === 0) {
     return <div className="trend-empty">해당 조건의 추이 데이터가 없습니다.</div>;
   }
@@ -115,122 +115,7 @@ function TrendChart({ points }: { points: ModelTrendResponse["points"] }) {
       </div>
     );
   }
-
-  const width = 720;
-  const height = 220;
-  const padTop = 28;
-  const padBottom = 32;
-  const padLeft = 56;
-  const padRight = 16;
-  const values = points.map((p) => p.avg_retention_rate);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-
-  const yFor = (v: number) => height - padBottom - ((v - min) / span) * (height - padTop - padBottom);
-  const coords = points.map((p, i) => {
-    const x = padLeft + (i / (points.length - 1)) * (width - padLeft - padRight);
-    return { x, y: yFor(p.avg_retention_rate), p };
-  });
-  const path = coords.map((c) => `${c.x},${c.y}`).join(" ");
-  const yTicks = [max, (max + min) / 2, min];
-
-  const hovered = hoverIndex !== null ? coords[hoverIndex] : null;
-  // 툴팁 박스가 오른쪽 끝에서 잘리지 않도록 위치를 안쪽으로 당김.
-  const tooltipW = 118;
-  const tooltipX = hovered ? Math.min(Math.max(hovered.x - tooltipW / 2, padLeft), width - padRight - tooltipW) : 0;
-  const tooltipY = hovered ? Math.max(hovered.y - 46, padTop) : 0;
-
-  return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="형명별 Y(포화도) 추이 그래프, 세로축 단위 %">
-      <text x={padLeft} y={14} fontSize="11" fill="var(--color-text-secondary)">
-        평균 포화도 Y (%)
-      </text>
-      {yTicks.map((v, i) => (
-        <g key={i}>
-          <line
-            x1={padLeft}
-            y1={yFor(v)}
-            x2={width - padRight}
-            y2={yFor(v)}
-            stroke="var(--color-border)"
-            strokeWidth={1}
-          />
-          <text x={padLeft - 8} y={yFor(v) + 4} fontSize="11" textAnchor="end" fill="var(--color-text-secondary)">
-            {v.toFixed(1)}%
-          </text>
-        </g>
-      ))}
-      <polyline points={path} fill="none" stroke="var(--sebang-green-700)" strokeWidth={2} />
-      {hovered && (
-        <line
-          x1={hovered.x}
-          y1={padTop}
-          x2={hovered.x}
-          y2={height - padBottom}
-          stroke="var(--sebang-green-700)"
-          strokeWidth={1}
-          strokeDasharray="3 3"
-          opacity={0.5}
-        />
-      )}
-      {coords.map((c, i) => (
-        <circle
-          key={c.p.period}
-          cx={c.x}
-          cy={c.y}
-          r={hoverIndex === i ? 6 : 3.5}
-          fill="var(--sebang-green-700)"
-          stroke={hoverIndex === i ? "#fff" : "none"}
-          strokeWidth={hoverIndex === i ? 2 : 0}
-        />
-      ))}
-      {/* 실제로 마우스를 받는 투명한 히트 영역 — 점(r=3.5)보다 훨씬 커서 쉽게 hover 가능 */}
-      {coords.map((c, i) => (
-        <circle
-          key={`hit-${c.p.period}`}
-          cx={c.x}
-          cy={c.y}
-          r={12}
-          fill="transparent"
-          onMouseEnter={() => setHoverIndex(i)}
-          onMouseLeave={() => setHoverIndex((cur) => (cur === i ? null : cur))}
-          style={{ cursor: "pointer" }}
-        />
-      ))}
-      <text x={padLeft} y={height - 8} fontSize="11" fill="var(--color-text-secondary)">
-        {coords[0].p.period}
-      </text>
-      <text
-        x={width - padRight}
-        y={height - 8}
-        fontSize="11"
-        textAnchor="end"
-        fill="var(--color-text-secondary)"
-      >
-        {coords[coords.length - 1].p.period}
-      </text>
-      {hovered && (
-        <g pointerEvents="none">
-          <rect
-            x={tooltipX}
-            y={tooltipY}
-            width={tooltipW}
-            height={38}
-            rx={6}
-            fill="var(--sebang-dark-gray)"
-            opacity={0.95}
-          />
-          <text x={tooltipX + 10} y={tooltipY + 15} fontSize="11" fill="#fff" fontWeight={700}>
-            {hovered.p.period}
-          </text>
-          <text x={tooltipX + 10} y={tooltipY + 30} fontSize="11" fill="#fff">
-            {fmt(hovered.p.avg_retention_rate, 2)}% (n={hovered.p.n})
-          </text>
-        </g>
-      )}
-    </svg>
-  );
+  return <TrendLineChart points={points} />;
 }
 
 export default function DetailAnalysisPage() {
@@ -397,19 +282,7 @@ export default function DetailAnalysisPage() {
     <div className="app">
       <TopBar active="상세 분석" />
 
-      <div className="steps">
-        <Link href="/upload" className="step done">
-          <span className="step-num">✓</span> ① 업로드
-        </Link>
-        <span className="step-sep" />
-        <Link href="/dashboard" className="step done">
-          <span className="step-num">✓</span> ② 결과 확인
-        </Link>
-        <span className="step-sep" />
-        <span className="step active">
-          <span className="step-num">3</span> ③ 상세 조회 (지금 여기)
-        </span>
-      </div>
+      <StepFlow current="detail" />
 
       <div className="page-head">
         <div>
@@ -588,7 +461,7 @@ export default function DetailAnalysisPage() {
                   <div className="alert" style={{ marginTop: "var(--space-4)" }}>
                     {failingLots && !failingLots.y_run_available && !failingLots.z_run_available
                       ? "1·2단 회귀가 아직 학습되지 않아 SPEC 미달 여부를 판정할 수 없습니다 — 대시보드에서 분석을 먼저 실행하세요."
-                      : "SPEC 미달 로트가 없습니다(또는 SPEC 하한이 아직 설정되지 않았습니다)."}
+                      : "SPEC 미달 로트가 없습니다."}
                   </div>
                 ) : (
                   <div className="table-scroll">

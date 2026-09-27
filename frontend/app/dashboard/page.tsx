@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { TopBar } from "@/components/TopBar";
+import { StepFlow } from "@/components/StepFlow";
 import {
   apiClient,
   ApiError,
@@ -13,10 +14,17 @@ import {
   type YVsCcaPair,
 } from "@/lib/api-client";
 import { ccaSpecBadge } from "@/lib/cca-spec";
+import { RadialGauge } from "@/components/RadialGauge";
+import { CorrelationBarChart } from "@/components/charts/CorrelationBarChart";
+import { DivergingBarChart } from "@/components/charts/DivergingBarChart";
 import Link from "next/link";
 
 type Stage = "x_to_y" | "xy_to_z" | "x_to_z_baseline";
 type CcaStage = "xy_to_sae_cca" | "xy_to_en_cca";
+
+// 포화도(Y)↔CCA 관계표 — 로트 수가 많아지면(형명당 수천 건 규모 더미 데이터) 전부 나열하지
+// 않고 규격 기준 대비 여유가 가장 적은 상위 N건만 보여준다. 전체는 별도 새 창(raw data)에서.
+const WORST_CCA_LIMIT = 10;
 
 // 검증·채점(history/24) — target별 "예측 SPEC 판정 == 실측 SPEC 판정" 일치율.
 const SCORING_TARGETS: { key: ScoringTarget; label: string }[] = [
@@ -152,52 +160,142 @@ function interpretR2Gap(
 
 type Tone = "ok" | "warn" | "unknown";
 
-/** 초대형 결론 배너(Layer 0)용 — SPEC 판정 결과를 전문용어 없이 한 문장으로. */
-function buildHeroVerdict(spec: SpecComplianceSummary | null): {
+interface HeroMetric {
+  icon: string;
+  label: string;
+  value: string;
+  tone: Tone;
+  sub: string;
+  /** 0~100 비율 — 히어로 카드의 원형 게이지(RadialGauge) 채움값. null이면 빈 링만 표시. */
+  gaugeValue: number | null;
+}
+
+/** 히어로 지표 3개(Y/Z/CCA) 공용 톤 판정 — 실측 기준 미달이 있으면 warn, 판정 기준 자체가
+ * 없으면 unknown, 그 외(기준 있음+미달 없음)는 ok. */
+function metricTone(hasBasis: boolean, hasFail: boolean): Tone {
+  if (!hasBasis) return "unknown";
+  return hasFail ? "warn" : "ok";
+}
+
+/** "스펙이 얼마인지" 자체를 보여달라는 요청(2026-09-27) — 형명마다 SPEC 하한이 다를 수 있어
+ * 하나의 숫자로 단정하지 않고, 실제로 설정된 값이 전부 같으면 그 값을, 다르면 범위를 보여준다. */
+function specRangeLabel(min: number | null | undefined, max: number | null | undefined): string | null {
+  if (min == null || max == null) return null;
+  if (Math.abs(min - max) < 0.001) return `${fmt(min, 1)}%`;
+  return `${fmt(min, 1)}~${fmt(max, 1)}%`;
+}
+
+/** 초대형 결론 배너(Layer 0)용 — "특정 로트를 확인하라"는 경고보다 먼저, X→Y→Z 전체 평균이
+ * 어떤 상태인지부터 한눈에 보여준다(사용자 피드백: 메인은 평균 결과, 미달 로트 안내는 아래
+ * insight-row의 Y/Z 카드로). */
+function buildHeroVerdict(
+  kpi: KpiSummary | null,
+  spec: SpecComplianceSummary | null
+): {
   tone: Tone;
   icon: string;
   chip: string;
   title: string;
   desc: ReactNode;
+  metrics: HeroMetric[];
+  followUp: ReactNode | null;
 } {
-  if (!spec || spec.models_with_spec === 0) {
+  const hasSpec = !!spec && spec.models_with_spec > 0;
+  const yFail = spec?.y_fail ?? 0;
+  const zFail = spec?.z_fail ?? 0;
+  const enCcaEvaluated = kpi?.en_cca_evaluated ?? 0;
+  const saeCcaEvaluated = kpi?.sae_cca_evaluated ?? 0;
+  const ccaHasBasis = enCcaEvaluated > 0 || saeCcaEvaluated > 0;
+  const ccaHasFail =
+    (kpi?.en_cca_pass ?? 0) < enCcaEvaluated || (kpi?.sae_cca_pass ?? 0) < saeCcaEvaluated;
+  const ySpecLabel = specRangeLabel(spec?.spec_lower_y_min, spec?.spec_lower_y_max);
+  const zSpecLabel = specRangeLabel(spec?.spec_lower_z_min, spec?.spec_lower_z_max);
+  const saeRate = saeCcaEvaluated ? ((kpi?.sae_cca_pass ?? 0) / saeCcaEvaluated) * 100 : null;
+  const enRate = enCcaEvaluated ? ((kpi?.en_cca_pass ?? 0) / enCcaEvaluated) * 100 : null;
+  const ccaGaugeValue =
+    saeRate !== null && enRate !== null
+      ? (saeRate + enRate) / 2
+      : saeRate ?? enRate;
+
+  const metrics: HeroMetric[] = [
+    {
+      icon: "💧",
+      label: "포화도(Y) 평균",
+      value: kpi?.avg_retention_rate != null ? `${fmt(kpi.avg_retention_rate, 1)}%` : "—",
+      tone: metricTone(hasSpec, yFail > 0),
+      sub: ySpecLabel ? `SPEC 하한 ${ySpecLabel} · 미달 ${yFail}건` : "데이터 없음",
+      gaugeValue: kpi?.avg_retention_rate ?? null,
+    },
+    {
+      icon: "🔋",
+      label: "20시간 용량(Z) 평균",
+      value: kpi?.avg_capacity_rate != null ? `${fmt(kpi.avg_capacity_rate, 1)}%` : "—",
+      tone: metricTone(hasSpec, zFail > 0),
+      sub: zSpecLabel ? `SPEC 하한 ${zSpecLabel} · 미달 ${zFail}건` : "데이터 없음",
+      gaugeValue: kpi?.avg_capacity_rate ?? null,
+    },
+    {
+      icon: "🧊",
+      label: "CCA 합격률",
+      value: ccaHasBasis
+        ? `SAE ${saeRate !== null ? fmt(saeRate, 0) : "—"}% · EN ${enRate !== null ? fmt(enRate, 0) : "—"}%`
+        : "—",
+      tone: metricTone(ccaHasBasis, ccaHasFail),
+      sub: ccaHasBasis ? "기준 EN ≥7.5V·90초 / SAE ≥7.2V·30초(고정)" : "시험 데이터 없음",
+      gaugeValue: ccaGaugeValue,
+    },
+  ];
+
+  const totalFail = yFail + zFail;
+  const anyWarn = metrics.some((m) => m.tone === "warn");
+  const anyBasis = hasSpec || ccaHasBasis;
+
+  const followUp =
+    totalFail > 0 ? (
+      <span className="hero-desc-line hero-desc-sub">
+        포화도(Y) {yFail}건, 20시간 용량(Z) {zFail}건은 아래 카드에서 어떤 형명인지 확인하세요. ↓
+      </span>
+    ) : null;
+
+  if (!anyBasis) {
     return {
       tone: "unknown",
       icon: "❔",
       chip: "판정 불가",
-      title: "아직 SPEC 기준이 없어서 판정할 수 없어요",
-      desc: "형명별 SPEC 하한(spec_lower_y/spec_lower_z)이 업로드되면 이 배너가 합격/불합격을 바로 알려줍니다.",
+      title: "아직 판정할 데이터가 없어요",
+      desc: "업로드된 로트가 없어 판정할 수 없습니다 — 데이터가 들어오면 SPEC(포화도 90%·20시간 용량 95%, CCA는 EN 50342/SAE J537 고정 기준) 대비 합격/불합격이 바로 나옵니다.",
+      metrics,
+      followUp,
     };
   }
-  const totalFail = spec.y_fail + spec.z_fail;
-  if (totalFail === 0) {
+  if (!anyWarn) {
     return {
       tone: "ok",
       icon: "✅",
       chip: "정상",
-      title: "이번 데이터, 전반적으로 좋아요",
+      title: "현재 데이터, 평균적으로 정상이에요",
       desc: (
         <span className="hero-desc-line">
-          SPEC이 설정된 형명 <span className="hero-num-chip ok">{spec.models_with_spec}개</span> 기준으로,
-          포화도(Y)·20시간 용량(Z) 모두 기준을 충족했습니다.
+          지금까지 확인된 로트 기준으로 포화도(Y)·20시간 용량(Z)·CCA 모두 평균이 기준을 충족했습니다.
         </span>
       ),
+      metrics,
+      followUp: null,
     };
   }
   return {
     tone: "warn",
     icon: "⚠️",
     chip: "확인 필요",
-    title: "확인이 필요한 로트가 있어요",
+    title: "평균은 정상 범위지만 확인이 필요한 로트가 있어요",
     desc: (
-      <>
-        <span className="hero-desc-line">
-          포화도(Y) <span className="hero-num-chip warn">{spec.y_fail}건</span>, 20시간 용량(Z){" "}
-          <span className="hero-num-chip warn">{spec.z_fail}건</span>이 SPEC 기준에 못 미칩니다.
-        </span>
-        <span className="hero-desc-line hero-desc-sub">아래 카드에서 어떤 형명인지 확인하세요.</span>
-      </>
+      <span className="hero-desc-line">
+        아래 3개 지표 중 기준 미달이 있는 항목을 확인하세요 — 평균 자체는 정상 범위라도 일부 로트가
+        전체 평균을 끌어올리거나 내릴 수 있습니다.
+      </span>
     ),
+    metrics,
+    followUp,
   };
 }
 
@@ -211,9 +309,9 @@ function buildSpecCard(
   if (!modelsWithSpec) {
     return {
       tone: "unknown",
-      chip: "SPEC 미설정",
+      chip: "데이터 없음",
       value: "판정 불가",
-      desc: `형명별 SPEC 하한이 아직 없어 ${metricLabel} 판정을 할 수 없습니다.`,
+      desc: `아직 업로드된 로트가 없어 ${metricLabel} 판정을 할 수 없습니다.`,
     };
   }
   if (!fail) {
@@ -281,6 +379,7 @@ export default function DashboardPage() {
   // CCA(Z2/Z3, history/19 Phase C)는 표본이 극히 적어 실패가 정상 상태다 — 메인 에러 배너와
   // 완전히 분리된 상태로 관리해, 실패해도 위 핵심 분석 결과가 "오류"처럼 보이지 않게 한다.
   const [yVsCca, setYVsCca] = useState<YVsCcaPair[]>([]);
+  const [yVsCcaTotal, setYVsCcaTotal] = useState(0);
   const [ccaResults, setCcaResults] = useState<Partial<Record<CcaStage, AnalysisRunResult>>>({});
   const [ccaNote, setCcaNote] = useState<Partial<Record<CcaStage, string>>>({});
   const [ccaRunning, setCcaRunning] = useState(false);
@@ -310,8 +409,9 @@ export default function DashboardPage() {
       if (result) nextCca[stage] = result;
     }
     setCcaResults(nextCca);
-    const ccaPairs = await apiClient.getYVsCca().catch(() => null);
+    const ccaPairs = await apiClient.getYVsCca({ limit: WORST_CCA_LIMIT, sort: "worst" }).catch(() => null);
     setYVsCca(ccaPairs?.pairs ?? []);
+    setYVsCcaTotal(ccaPairs?.total_count ?? 0);
 
     const nextScoring: Partial<Record<ScoringTarget, ScoringRunResult>> = {};
     for (const { key } of SCORING_TARGETS) {
@@ -323,8 +423,9 @@ export default function DashboardPage() {
     setLoaded(true);
   }, []);
 
-  async function handleRunScoring() {
-    setScoringRunning(true);
+  /** target 4종을 전부 채점 — "다시 채점" 버튼과 분석 실행 직후 둘 다에서 재사용한다(분석을 막
+   * 실행한 직후에는 채점 이력이 아직 없어 "검증 신뢰도" 카드가 계속 "미채점"으로 보였던 문제 수정). */
+  const runScoringAll = useCallback(async () => {
     const next: Partial<Record<ScoringTarget, ScoringRunResult>> = {};
     for (const { key } of SCORING_TARGETS) {
       try {
@@ -335,6 +436,11 @@ export default function DashboardPage() {
       }
     }
     setScoring((prev) => ({ ...prev, ...next }));
+  }, []);
+
+  async function handleRunScoring() {
+    setScoringRunning(true);
+    await runScoringAll();
     setScoringRunning(false);
   }
 
@@ -370,6 +476,7 @@ export default function DashboardPage() {
       await apiClient.runXyToZ();
       await apiClient.runXToZBaseline();
       await refresh();
+      await runScoringAll();
     } catch (e) {
       setError(e instanceof ApiError ? String(e.detail) : "분석 실행 중 오류가 발생했습니다.");
     } finally {
@@ -391,11 +498,27 @@ export default function DashboardPage() {
         (a, b) => Math.abs(xToY.coefficients[b] ?? 0) - Math.abs(xToY.coefficients[a] ?? 0)
       )
     : [];
-  const maxAbsCoef = xToY ? Math.max(...Object.values(xToY.coefficients).map(Math.abs), 1e-9) : 1;
+
+  const correlationChartData = sortedCorrelation.map((col) => {
+    const sig = xToY?.significance[col];
+    const r = sig?.r ?? 0;
+    return {
+      key: col,
+      label: labelFor(col),
+      r,
+      strengthLabel: strengthLabel(Math.abs(r)),
+      significant: !!sig?.significant,
+    };
+  });
+  const coefChartData = sortedCoef.map((col) => ({
+    key: col,
+    label: labelFor(col),
+    value: xToY?.coefficients[col] ?? 0,
+  }));
 
   const r2GapNote = interpretR2Gap(xyToZ, baseline);
 
-  const hero = buildHeroVerdict(specCompliance);
+  const hero = buildHeroVerdict(kpi, specCompliance);
   const yCard = buildSpecCard("포화도(Y)", specCompliance?.y_fail, specCompliance?.y_evaluated, specCompliance?.models_with_spec);
   const zCard = buildSpecCard("20시간 용량(Z)", specCompliance?.z_fail, specCompliance?.z_evaluated, specCompliance?.models_with_spec);
   const yRankedFactors = rankFactorsByCorrelation(xToY);
@@ -406,19 +529,7 @@ export default function DashboardPage() {
     <div className="app">
       <TopBar active="분석 대시보드" />
 
-      <div className="steps">
-        <Link href="/upload" className="step done">
-          <span className="step-num">✓</span> ① 업로드
-        </Link>
-        <span className="step-sep" />
-        <span className="step active">
-          <span className="step-num">2</span> ② 결과 확인 (지금 여기)
-        </span>
-        <span className="step-sep" />
-        <Link href="/detail-analysis" className="step">
-          <span className="step-num">3</span> ③ 상세 조회
-        </Link>
-      </div>
+      <StepFlow current="dashboard" />
 
       <div className="page-head">
         <div>
@@ -433,8 +544,8 @@ export default function DashboardPage() {
       <div className="onboard-strip">
         <span className="onboard-icon">💡</span>
         <div>
-          처음이라도 걱정 마세요 — 위 순서(① 업로드 → ② 결과 확인 → ③ 상세 조회)만 따라가면 오늘
-          데이터가 <b>괜찮은지 바로</b> 알 수 있어요.
+          처음이라도 걱정 마세요 — 위 순서(① 업로드 → ② 결과 확인 → ③ 상세 조회 → ④ 예측)만
+          따라가면 오늘 데이터가 <b>괜찮은지 바로</b> 알 수 있어요.
         </div>
       </div>
 
@@ -462,6 +573,28 @@ export default function DashboardPage() {
               </div>
               <div className="hero-title">{hero.title}</div>
               <div className="hero-desc">{hero.desc}</div>
+              <div className="hero-metrics">
+                {hero.metrics.map((m) => (
+                  <div className="hero-metric" key={m.label}>
+                    <div className="hero-metric-head">
+                      <span>
+                        {m.icon} {m.label}
+                      </span>
+                      <span className={`status-chip ${m.tone}`}>
+                        {m.tone === "ok" ? "정상" : m.tone === "warn" ? "확인 필요" : "판정 불가"}
+                      </span>
+                    </div>
+                    <div className="hero-metric-body">
+                      <RadialGauge value={m.gaugeValue !== null ? Math.min(m.gaugeValue, 100) : null} />
+                      <div>
+                        <div className="hero-metric-value">{m.value}</div>
+                        <div className="hero-metric-sub">{m.sub}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {hero.followUp && <div className="hero-desc hero-followup">{hero.followUp}</div>}
               <div className="hero-updated">
                 마지막 갱신 {xToY.run_at ?? "—"} · 분석 표본 {xToY.n}건
               </div>
@@ -529,7 +662,7 @@ export default function DashboardPage() {
               </div>
               <div className="insight-value">{scoringCard.value}</div>
               <div className="insight-desc">{scoringCard.desc}</div>
-              <a href="#evidence" className="insight-cta">
+              <a href="#scoring-detail" className="insight-cta">
                 검증 자세히 보기 →
               </a>
             </div>
@@ -610,10 +743,12 @@ export default function DashboardPage() {
                       className="kpi-value"
                       style={{ fontSize: "1rem", color: "var(--color-text-secondary)" }}
                     >
-                      SPEC 미설정
+                      데이터 없음
                     </div>
                     <div className="kpi-sub">
-                      형명별 SPEC 하한이 아직 업로드되지 않아 판정할 수 없습니다(templates/spec_thresholds_template.csv).
+                      아직 업로드된 로트가 없어 SPEC 판정을 할 수 없습니다. 데이터가 들어오면 포화도(Y)
+                      90%·20시간 용량(Z) 95% 기준(전 형명 공통, 형명별로 다르게 하려면
+                      templates/spec_thresholds_template.csv로 override 가능)으로 자동 판정됩니다.
                     </div>
                   </>
                 )}
@@ -646,31 +781,7 @@ export default function DashboardPage() {
                   <h3>상관계수 — 공정인자 × 포화도(Y)</h3>
                   <span className="hint">|r| 기준</span>
                 </div>
-                {sortedCorrelation.map((col) => {
-                  const sig = xToY.significance[col];
-                  const r = sig?.r ?? 0;
-                  return (
-                    <div className="heat-row" key={col}>
-                      <div className="heat-factor">
-                        {labelFor(col)}
-                        <span className="heat-strength">{strengthLabel(Math.abs(r))}</span>
-                      </div>
-                      <div className="heat-bar-track">
-                        <div
-                          className="heat-bar-fill"
-                          style={{
-                            width: `${Math.min(Math.abs(r) * 100, 100)}%`,
-                            background: r < 0 ? "var(--sebang-gray-400)" : undefined,
-                          }}
-                        />
-                      </div>
-                      <div className={`heat-value${sig?.significant ? " strong" : ""}`}>
-                        {fmt(r)}
-                        {sig?.significant ? "" : "†"}
-                      </div>
-                    </div>
-                  );
-                })}
+                <CorrelationBarChart data={correlationChartData} />
                 <div className="vif-note align-start">
                   📏 <div><b>|r| 해석 기준(일반적인 통계 관례)</b> — 0~0.1 거의 없음 · 0.1~0.3
                   약한 관계 · 0.3~0.5 보통 관계 · 0.5 이상 강한 관계. 숫자가 클수록 두 값이 뚜렷하게
@@ -687,23 +798,7 @@ export default function DashboardPage() {
                   <h3>다중선형회귀 계수 (X → Y)</h3>
                   <span className="hint">원 단위 계수</span>
                 </div>
-                {sortedCoef.map((col) => {
-                  const value = xToY.coefficients[col] ?? 0;
-                  const width = (Math.abs(value) / maxAbsCoef) * 45;
-                  return (
-                    <div className="coef-row" key={col}>
-                      <div className="coef-factor">{labelFor(col)}</div>
-                      <div className="coef-track">
-                        <div className="coef-axis" />
-                        <div
-                          className={`coef-fill ${value >= 0 ? "pos" : "neg"}`}
-                          style={{ width: `${width}%` }}
-                        />
-                      </div>
-                      <div className="coef-value">{fmtSigned(value)}</div>
-                    </div>
-                  );
-                })}
+                <DivergingBarChart data={coefChartData} />
                 <div className="vif-note align-start">
                   📈 다른 인자의 영향을 걷어낸 뒤 이 인자 하나만 바뀌었을 때 Y가 얼마나 움직이는지
                   보여주는 계수입니다. VIF가 5를 크게 넘으면 다중공선성을 의심하세요.
@@ -806,7 +901,7 @@ export default function DashboardPage() {
         <details className="evidence">
           <summary>
             <span className="summary-tag">참고</span> 포화도(Y) ↔ CCA(저온시동전류) 관계 확인
-            <span className="summary-hint">팀장 피드백 반영 — 신뢰성 시험 표본 극히 적어 참고용</span>
+            <span className="summary-hint">규격 기준 대비 여유가 적은 순 상위 {WORST_CCA_LIMIT}건</span>
           </summary>
           <div className="evidence-body">
             <div className="card">
@@ -824,6 +919,10 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <>
+                  <div className="vif-note align-start" style={{ marginBottom: "var(--space-3)" }}>
+                    📌 전체 {yVsCcaTotal}건 중 SAE·EN 규격 기준 대비 여유가 가장 적은 {yVsCca.length}건만
+                    표시합니다 — 나머지는 아래 원본 데이터 화면에서 전부 확인할 수 있습니다.
+                  </div>
                   <div className="table-scroll">
                   <table style={{ marginBottom: "var(--space-4)" }}>
                     <thead>
@@ -860,10 +959,14 @@ export default function DashboardPage() {
                     </tbody>
                   </table>
                   </div>
-                  <div className="vif-note align-start">
-                    📌 표본이 {yVsCca.length}건뿐이라 지금은 경향을 확정할 수 없습니다 — 참고용으로만
-                    봐주세요. 신뢰성 시험 데이터가 더 쌓이면 아래 회귀분석이 자동으로 가능해집니다.
-                  </div>
+                  <a
+                    href="/dashboard/y-vs-cca"
+                    target="_blank"
+                    className="insight-cta"
+                    style={{ display: "inline-block", marginBottom: "var(--space-4)" }}
+                  >
+                    전체 {yVsCcaTotal}건 원본 데이터 보기(새 창) →
+                  </a>
                   <div className="vif-note align-start">
                     📐 EN/SAE 규격: EN CCA는 10초 전압 ≥7.5V·6.0V까지 지속시간 ≥90초, SAE CCA는
                     7.2V까지 지속시간 ≥30초를 만족해야 합격입니다(형명 무관 고정 기준).
@@ -918,9 +1021,10 @@ export default function DashboardPage() {
                 </p>
               ) : (
                 <p style={{ margin: "0 0 var(--space-4)", fontSize: "0.875rem", lineHeight: 1.6 }}>
-                  아직 SPEC 하한(spec_lower_y/spec_lower_z)이 업로드되지 않아 양품/부적합을 판정할 수
-                  없습니다. <code>templates/spec_thresholds_template.csv</code>를 채워 업로드하면 이
-                  카드와 아래 예측 화면의 판정이 즉시 반영됩니다.
+                  아직 업로드된 로트가 없어 양품/부적합을 판정할 수 없습니다. 데이터가 들어오면
+                  포화도(Y) 90%·20시간 용량(Z) 95% 기준(전 형명 공통)으로 바로 판정됩니다 — 형명별로
+                  다른 기준이 필요하면 <code>templates/spec_thresholds_template.csv</code>로 개별
+                  override할 수 있습니다.
                 </p>
               )}
               <p style={{ margin: "0 0 var(--space-4)", fontSize: "0.875rem", lineHeight: 1.6 }}>
@@ -945,7 +1049,7 @@ export default function DashboardPage() {
               가능&rdquo;
             </span>
           </summary>
-          <div className="evidence-body">
+          <div className="evidence-body" id="scoring-detail">
             <div className="card">
               <p style={{ margin: "0 0 var(--space-4)", fontSize: "0.875rem", lineHeight: 1.6 }}>
                 시험 매칭 로트(실측값이 있는 로트) 전체로 회귀를 다시 학습해, 그 로트들에 대해 예측한

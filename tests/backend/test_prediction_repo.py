@@ -80,16 +80,19 @@ def test_get_unmatched_lots_x_excludes_incomplete_x(tmp_path, monkeypatch):
         conn.close()
 
 
-def test_get_spec_threshold_for_model_returns_none_when_not_set(tmp_path, monkeypatch):
+def test_get_spec_threshold_for_model_falls_back_to_default_when_not_set(tmp_path, monkeypatch):
+    """§10-11 확정(2026-09-27) — override가 없으면 전체 공통 기본값(90%/95%)을 반환한다(더 이상 None)."""
     conn = _setup_db(tmp_path, monkeypatch)
     try:
-        assert repo.get_spec_threshold_for_model(conn, "AGM90_S1") is None
+        assert repo.get_spec_threshold_for_model(conn, "AGM90_S1") == {
+            "spec_lower_y": 90.0, "spec_lower_z": 95.0,
+        }
 
         repo.upsert_spec_thresholds(
-            conn, [{"model_name": "AGM90_S1", "spec_lower_y": "91.0", "spec_lower_z": "95.0"}]
+            conn, [{"model_name": "AGM90_S1", "spec_lower_y": "91.0", "spec_lower_z": "96.0"}]
         )
         thresholds = repo.get_spec_threshold_for_model(conn, "AGM90_S1")
-        assert thresholds == {"spec_lower_y": 91.0, "spec_lower_z": 95.0}
+        assert thresholds == {"spec_lower_y": 91.0, "spec_lower_z": 96.0}
     finally:
         conn.close()
 

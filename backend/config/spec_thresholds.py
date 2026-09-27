@@ -7,6 +7,12 @@ from __future__ import annotations
 
 MIN_SAMPLE_SIZE_FOR_MODEL_DETAIL = 5
 
+# Y·Z SPEC 하한(§10 Open Question #11, 2026-09-27 사용자 확정) — 35개 형명 전체 공통 적용.
+# `ConstantsByModel.spec_lower_y/z`에 형명별로 다른 값을 명시적으로 넣어두면 그 값이 우선하고
+# (override), 값이 없는(NULL, 또는 해당 형명 행 자체가 없는) 형명은 전부 이 기본값을 쓴다.
+DEFAULT_SPEC_LOWER_Y = 90.0  # %, 포화도(잔존율 proxy) 하한
+DEFAULT_SPEC_LOWER_Z = 95.0  # %, 20시간 용량(capacity_rate) 하한
+
 # EN 50342 / SAE J537 CCA 규격 고정 임계값(history/20, 2026-09-21 사용자 확인) — 형명별로 다르지
 # 않은 업계 표준 판정 기준이라 `ConstantsByModel`(형명별 SPEC 테이블)과는 분리해 둔다.
 EN_CCA_10S_VOLTAGE_MIN = 7.5    # V, 10초 시점 전압 하한

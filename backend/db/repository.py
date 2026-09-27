@@ -18,6 +18,7 @@ from backend.analysis.derive import (
     extract_buyer_code_from_model_name,
     parse_rated_capacity_from_model_name,
 )
+from backend.config.spec_thresholds import DEFAULT_SPEC_LOWER_Y, DEFAULT_SPEC_LOWER_Z
 
 # 데모/테스트 버전 분리(.docs/24, 2026-09-24, 튜터 조언 .docs/23 반영) — 환경변수 AX_DB_PROFILE이
 # 없으면(기본값) 지금까지와 동일하게 app.db(데모 버전)를 쓴다. "test"로 지정하면 app_test.db(검증
@@ -442,7 +443,9 @@ def upsert_spec_thresholds(conn: sqlite3.Connection, rows: list[dict]) -> dict:
 
     회귀 로직(analysis/regression.py)은 이 테이블을 참조하지 않는다 — SPEC은 ⑤ 판정
     단계에서만 쓰이므로(사용자 결정, 2026-09-10), 이 업로드는 통계 분석에 영향을 주지 않는다.
-    담당자 확인 전(docs/prd.md §10-11)이라 값이 비어 있어도(NULL) 오류 없이 저장된다.
+    §10-11 확정(2026-09-27) 이후로는 이 테이블이 **형명별 override 전용**이다 — 값이 비어
+    있으면(NULL) 오류 없이 저장되고, 판정 시점에 전체 공통 기본값(90%/95%,
+    `config.spec_thresholds`)이 대신 적용된다.
     """
     updated_models: list[str] = []
     for raw in rows:
@@ -693,8 +696,8 @@ def get_xy_to_en_cca_training_rows(conn: sqlite3.Connection) -> list[dict]:
 
 
 def get_y_vs_cca_pairs(conn: sqlite3.Connection) -> list[dict]:
-    """포화도(Y)와 SAE/EN CCA의 관계 확인용 로트별 쌍(팀장 피드백 — 상세 회귀가 아니라 단순
-    산점도/참고 비교 목적, history/19 Phase C). CCA 값이 하나라도 있는 로트만 반환."""
+    """포화도(Y)와 SAE/EN CCA의 관계 확인용 로트별 쌍(상세 회귀가 아니라 단순 산점도/참고 비교
+    목적, history/19 Phase C). CCA 값이 하나라도 있는 로트만 반환."""
     rows = conn.execute(
         """
         SELECT l.lot_id, l.model_name, d.retention_rate, t.sae_cca, t.en_cca,
@@ -713,7 +716,8 @@ def get_y_vs_cca_pairs(conn: sqlite3.Connection) -> list[dict]:
 
 def get_scoring_rows(conn: sqlite3.Connection) -> list[dict]:
     """채점 모듈(.docs/24) 대상 로트 전체: 1단 X + retention_rate(Y 실측) + 시험 실측값(Z·CCA
-    체크포인트) + 모델별 SPEC 하한(ConstantsByModel, 없으면 NULL)을 한 번에 반환한다.
+    체크포인트) + 모델별 SPEC 하한(ConstantsByModel, 형명별 override 없으면 전체 공통 기본값
+    90%/95% 적용)을 한 번에 반환한다.
 
     `get_xy_to_z_training_rows` 등과 매칭 조건(전해액온도·수조온도·retention_rate 존재)은 같지만,
     채점은 target별로 필요한 컬럼이 달라 필터링을 여기서 미리 하지 않고 `analysis/scoring.py`에
@@ -726,7 +730,7 @@ def get_scoring_rows(conn: sqlite3.Connection) -> list[dict]:
                d.charge_program_deviation_pct, d.retention_rate,
                t.discharge_amount, t.capacity_rate,
                t.en_cca_10s_voltage, t.en_cca_6v_hold_sec, t.sae_cca_7v2_hold_sec,
-               c.spec_lower_y, c.spec_lower_z
+               COALESCE(c.spec_lower_y, ?) AS spec_lower_y, COALESCE(c.spec_lower_z, ?) AS spec_lower_z
         FROM Lot l
         JOIN (SELECT lot_id, MAX(id) AS latest_id FROM ProcessData GROUP BY lot_id) latest_p
           ON latest_p.lot_id = l.lot_id
@@ -738,7 +742,8 @@ def get_scoring_rows(conn: sqlite3.Connection) -> list[dict]:
         LEFT JOIN ConstantsByModel c ON c.model_name = l.model_name
         WHERE p.electrolyte_temp IS NOT NULL AND p.charge_amount IS NOT NULL
           AND p.tank_temp IS NOT NULL AND d.retention_rate IS NOT NULL
-        """
+        """,
+        (DEFAULT_SPEC_LOWER_Y, DEFAULT_SPEC_LOWER_Z),
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -858,12 +863,20 @@ def get_kpi_summary(conn: sqlite3.Connection) -> dict:
     total_lots = conn.execute("SELECT COUNT(*) AS n FROM Lot").fetchone()["n"]
     matched_lots = conn.execute("SELECT COUNT(DISTINCT lot_id) AS n FROM TestData").fetchone()["n"]
     avg_retention_rate = conn.execute("SELECT AVG(retention_rate) AS v FROM LotDerived").fetchone()["v"]
+    avg_capacity_rate = conn.execute(
+        """
+        SELECT AVG(t.capacity_rate) AS v
+        FROM (SELECT lot_id, MAX(id) AS latest_id FROM TestData GROUP BY lot_id) latest_t
+        JOIN TestData t ON t.id = latest_t.latest_id
+        """
+    ).fetchone()["v"]
     match_rate = round(matched_lots / total_lots * 100, 1) if total_lots else 0.0
     return {
         "total_lots": total_lots,
         "matched_lots": matched_lots,
         "match_rate": match_rate,
         "avg_retention_rate": avg_retention_rate,
+        "avg_capacity_rate": avg_capacity_rate,
     }
 
 
@@ -875,28 +888,38 @@ def get_spec_compliance_summary(conn: sqlite3.Connection) -> dict:
     """대시보드 KPI용 SPEC 판정 요약(`GET /api/spec-compliance`, history/17 5단계).
 
     이미 알고 있는 값(Y=LotDerived.retention_rate, Z=TestData.capacity_rate — 둘 다 예측이
-    아니라 실측/직접계산값)만으로 SPEC 하한(ConstantsByModel)과 비교한다. 예측(Ŷ/Ẑ) 기반 판정은
+    아니라 실측/직접계산값)만으로 SPEC 하한(ConstantsByModel, 형명별 override 없으면
+    `config.spec_thresholds`의 전체 공통 기본값 90%/95%)과 비교한다. 예측(Ŷ/Ẑ) 기반 판정은
     `/prediction` 화면(POST /api/predict/*)이 담당하고, 여기서는 "이번 달 실제로 확보된 데이터
-    기준" 요약만 낸다. `models_with_spec=0`이면 SPEC이 아직 하나도 설정되지 않은 것이다.
+    기준" 요약만 낸다. SPEC이 이제 전 형명 공통 적용이라 `models_with_spec`은 사실상 "SPEC이
+    적용되는 형명 수"(=데이터가 있는 형명 수)를 뜻한다.
     """
     row = conn.execute(
         """
         SELECT
-          COUNT(CASE WHEN d.retention_rate IS NOT NULL AND c.spec_lower_y IS NOT NULL THEN 1 END) AS y_evaluated,
-          COUNT(CASE WHEN d.retention_rate IS NOT NULL AND c.spec_lower_y IS NOT NULL
-                       AND d.retention_rate < c.spec_lower_y THEN 1 END) AS y_fail,
-          COUNT(CASE WHEN t.capacity_rate IS NOT NULL AND c.spec_lower_z IS NOT NULL THEN 1 END) AS z_evaluated,
-          COUNT(CASE WHEN t.capacity_rate IS NOT NULL AND c.spec_lower_z IS NOT NULL
-                       AND t.capacity_rate < c.spec_lower_z THEN 1 END) AS z_fail,
-          COUNT(DISTINCT CASE WHEN c.spec_lower_y IS NOT NULL OR c.spec_lower_z IS NOT NULL
-                               THEN l.model_name END) AS models_with_spec
+          COUNT(CASE WHEN d.retention_rate IS NOT NULL THEN 1 END) AS y_evaluated,
+          COUNT(CASE WHEN d.retention_rate IS NOT NULL
+                       AND d.retention_rate < COALESCE(c.spec_lower_y, ?) THEN 1 END) AS y_fail,
+          COUNT(CASE WHEN t.capacity_rate IS NOT NULL THEN 1 END) AS z_evaluated,
+          COUNT(CASE WHEN t.capacity_rate IS NOT NULL
+                       AND t.capacity_rate < COALESCE(c.spec_lower_z, ?) THEN 1 END) AS z_fail,
+          COUNT(DISTINCT l.model_name) AS models_with_spec,
+          MIN(COALESCE(c.spec_lower_y, ?)) AS spec_lower_y_min,
+          MAX(COALESCE(c.spec_lower_y, ?)) AS spec_lower_y_max,
+          MIN(COALESCE(c.spec_lower_z, ?)) AS spec_lower_z_min,
+          MAX(COALESCE(c.spec_lower_z, ?)) AS spec_lower_z_max
         FROM Lot l
         LEFT JOIN LotDerived d ON d.lot_id = l.lot_id
         LEFT JOIN (SELECT lot_id, MAX(id) AS latest_id FROM TestData GROUP BY lot_id) latest_t
           ON latest_t.lot_id = l.lot_id
         LEFT JOIN TestData t ON t.id = latest_t.latest_id
         LEFT JOIN ConstantsByModel c ON c.model_name = l.model_name
-        """
+        """,
+        (
+            DEFAULT_SPEC_LOWER_Y, DEFAULT_SPEC_LOWER_Z,
+            DEFAULT_SPEC_LOWER_Y, DEFAULT_SPEC_LOWER_Y,
+            DEFAULT_SPEC_LOWER_Z, DEFAULT_SPEC_LOWER_Z,
+        ),
     ).fetchone()
     return dict(row)
 
@@ -1024,24 +1047,30 @@ def get_unmatched_lots_x(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_spec_threshold_for_model(conn: sqlite3.Connection, model_name: str) -> dict | None:
-    """모델 하나의 SPEC 하한(spec_lower_y/z) 조회. 미설정(NULL)이어도 행이 없으면 None."""
+def get_spec_threshold_for_model(conn: sqlite3.Connection, model_name: str) -> dict:
+    """모델 하나의 SPEC 하한(spec_lower_y/z) 조회 — `ConstantsByModel`에 형명별 override가 없으면
+    (행 자체가 없거나 컬럼이 NULL이면) 전체 공통 기본값(§10-11, 2026-09-27 확정)을 적용해 항상
+    dict를 반환한다(더 이상 "판정 불가"의 원인이 아니다)."""
     row = conn.execute(
         "SELECT spec_lower_y, spec_lower_z FROM ConstantsByModel WHERE model_name = ?",
         (model_name,),
     ).fetchone()
-    return dict(row) if row else None
+    spec_lower_y = row["spec_lower_y"] if row and row["spec_lower_y"] is not None else DEFAULT_SPEC_LOWER_Y
+    spec_lower_z = row["spec_lower_z"] if row and row["spec_lower_z"] is not None else DEFAULT_SPEC_LOWER_Z
+    return {"spec_lower_y": spec_lower_y, "spec_lower_z": spec_lower_z}
 
 
 def get_failing_lots(conn: sqlite3.Connection, model_name: str | None = None) -> list[dict]:
     """실측 Y(retention_rate)·Z(capacity_rate)가 SPEC 하한 미달인 로트 전체(`GET /api/models/failing-lots`).
 
     `get_x_to_y_training_rows`/`get_xy_to_z_training_rows`와 동일한 1단 X셋 조인 패턴에
-    `ConstantsByModel`(SPEC 하한)을 더해, 실제로 SPEC 미달인 로트만 걸러 반환한다. 예측이 아니라
-    이미 확보된 실측/직접계산값 기준이라 `/prediction`(미매칭 로트 예측)과는 대상이 겹치지 않는다
-    (여긴 시험 매칭된 로트만, `/prediction`은 미매칭 로트만). `model_name`을 주면 그 형명만 필터.
+    `ConstantsByModel`(SPEC 하한, 형명별 override 없으면 전체 공통 기본값 90%/95% 적용)을 더해,
+    실제로 SPEC 미달인 로트만 걸러 반환한다. `ConstantsByModel`에 아예 행이 없는 형명도(=지금
+    35개 형명 대부분) 기본값으로 판정 대상이 되도록 LEFT JOIN을 쓴다. 예측이 아니라 이미 확보된
+    실측/직접계산값 기준이라 `/prediction`(미매칭 로트 예측)과는 대상이 겹치지 않는다(여긴 시험
+    매칭된 로트만, `/prediction`은 미매칭 로트만). `model_name`을 주면 그 형명만 필터.
     """
-    params: list = []
+    params: list = [DEFAULT_SPEC_LOWER_Y, DEFAULT_SPEC_LOWER_Z, DEFAULT_SPEC_LOWER_Y, DEFAULT_SPEC_LOWER_Z]
     model_filter = ""
     if model_name:
         model_filter = "AND l.model_name = ?"
@@ -1053,7 +1082,7 @@ def get_failing_lots(conn: sqlite3.Connection, model_name: str | None = None) ->
                d.formation_dv, d.cell_weight_mean, d.cell_weight_std, d.charge_ratio,
                d.charge_program_deviation_pct, d.retention_rate,
                t.capacity_rate,
-               c.spec_lower_y, c.spec_lower_z
+               COALESCE(c.spec_lower_y, ?) AS spec_lower_y, COALESCE(c.spec_lower_z, ?) AS spec_lower_z
         FROM Lot l
         JOIN (SELECT lot_id, MAX(id) AS latest_id FROM ProcessData GROUP BY lot_id) latest_p
           ON latest_p.lot_id = l.lot_id
@@ -1062,10 +1091,10 @@ def get_failing_lots(conn: sqlite3.Connection, model_name: str | None = None) ->
         JOIN (SELECT lot_id, MAX(id) AS latest_id FROM TestData GROUP BY lot_id) latest_t
           ON latest_t.lot_id = l.lot_id
         JOIN TestData t ON t.id = latest_t.latest_id
-        JOIN ConstantsByModel c ON c.model_name = l.model_name
+        LEFT JOIN ConstantsByModel c ON c.model_name = l.model_name
         WHERE (
-            (c.spec_lower_y IS NOT NULL AND d.retention_rate IS NOT NULL AND d.retention_rate < c.spec_lower_y)
-            OR (c.spec_lower_z IS NOT NULL AND t.capacity_rate IS NOT NULL AND t.capacity_rate < c.spec_lower_z)
+            (d.retention_rate IS NOT NULL AND d.retention_rate < COALESCE(c.spec_lower_y, ?))
+            OR (t.capacity_rate IS NOT NULL AND t.capacity_rate < COALESCE(c.spec_lower_z, ?))
           )
           {model_filter}
         ORDER BY l.model_name, l.lot_id

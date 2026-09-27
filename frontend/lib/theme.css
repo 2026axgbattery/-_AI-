@@ -20,9 +20,20 @@
 
   --color-bg-base: #FFFFFF;
   --color-bg-surface: #FBFBFB;
+  /* 2026-09-27 요청 — 전체 배경을 살짝 어둡게. `--color-bg-base`는 건드리지 않는다(카드가 아닌
+     `.vif-note`/`.period-tab` 등 여러 컴포넌트가 "흰색 표면"이라는 의미로 이 토큰을 그대로 갖다
+     쓰고 있어, 값을 바꾸면 그 컴포넌트들까지 전부 페이지색과 같아져 버림) — 대신 `body` 배경 전용
+     토큰을 새로 두어 페이지 캔버스만 톤다운하고, 카드·배지·탭 등은 흰색 그대로 유지해 오히려
+     배경 대비 카드가 더 또렷하게 보이도록 한다. */
+  --color-bg-page: var(--sebang-gray-100);
   --color-border: #D0D0CE;
   --color-text-primary: #333F48;
-  --color-text-secondary: #717779;
+  /* sebang-dark-gray-400(#5C656D) — 기존 #717779(gray-700)은 흰 배경 대비 4.55:1로 거의
+     마진이 없어(WCAG 일반 텍스트 기준 4.5:1), 위 배경 톤다운 후 새 페이지 배경(gray-100)
+     위에서는 3.91:1로 기준 미달이었다(계산 검증, docs/design.md §2.6 방식). #5C656D는 흰
+     배경 5.94:1·gray-100 배경 5.10:1 둘 다 통과하고, sebang-dark-gray 확장 팔레트에 이미
+     존재하는 색이라 새 색상을 만들지 않았다. */
+  --color-text-secondary: #5C656D;
   --color-text-disabled: #B5BBBD;
   --color-accent-primary: #EB3300;
   --color-accent-secondary: #006A76;
@@ -44,9 +55,14 @@
 * { box-sizing: border-box; }
 html, body { padding: 0; margin: 0; }
 body {
-  background: var(--color-bg-base);
+  background: var(--color-bg-page);
   color: var(--color-text-primary);
   font-family: var(--font-family-base);
   -webkit-font-smoothing: antialiased;
+  /* 한글은 기본 CJK 줄바꿈 규칙대로면 "0건"처럼 숫자+글자 사이도 아무 데서나 끊긴다(2026-09-27
+     실사용 확인 — 좁은 카드에서 "부적합 0\n건"처럼 어색하게 쪼개짐). keep-all로 전역 방지하고,
+     정말 끊어야만 하는 긴 값(옵션)은 overflow-wrap으로 넘친다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 a { color: inherit; }
