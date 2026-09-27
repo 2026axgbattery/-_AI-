@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 228" role="img" aria-hidden="true">
+  <defs>
+    <linearGradient id="liquidGrad" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#00565f" />
+      <stop offset="55%" stop-color="#006A76" />
+      <stop offset="100%" stop-color="#4FB8AE" />
+    </linearGradient>
+    <linearGradient id="caseGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F1F2F0" />
+      <stop offset="100%" stop-color="#DBDDD9" />
+    </linearGradient>
+  </defs>
+
+  <!-- 케이스 외형 -->
+  <rect x="8" y="38" width="374" height="186" rx="16" fill="url(#caseGrad)" stroke="#333F48" stroke-width="4" />
+
+  <!-- 단자(터미널) -->
+  <rect x="81" y="12" width="32" height="30" rx="6" fill="#333F48" />
+  <text x="97" y="33" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#F1F2F0">-</text>
+  <rect x="277" y="12" width="32" height="30" rx="6" fill="#333F48" />
+  <text x="293" y="33" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#F1F2F0">+</text>
+
+  <!-- 내부 전해액 창(컷어웨이) -->
+  <rect x="20" y="50" width="350" height="164" rx="10" fill="url(#liquidGrad)" />
+
+  <!-- 6셀 칸막이 -->
+  <g stroke="#20262C" stroke-width="2" opacity="0.32">
+    <line x1="78.3" y1="50" x2="78.3" y2="214" />
+    <line x1="136.7" y1="50" x2="136.7" y2="214" />
+    <line x1="195" y1="50" x2="195" y2="214" />
+    <line x1="253.3" y1="50" x2="253.3" y2="214" />
+    <line x1="311.7" y1="50" x2="311.7" y2="214" />
+  </g>
+
+  <!-- 액면 하이라이트 -->
+  <rect x="20" y="50" width="350" height="9" fill="#FFFFFF" opacity="0.22" />
+
+  <!-- 케이스 테두리(내부 창 프레임) -->
+  <rect x="20" y="50" width="350" height="164" rx="10" fill="none" stroke="#333F48" stroke-width="2.5" opacity="0.55" />
+
+  <text x="356" y="219" text-anchor="end" font-family="Arial, sans-serif" font-size="11" font-weight="600" fill="#8B9299">12V</text>
+</svg>

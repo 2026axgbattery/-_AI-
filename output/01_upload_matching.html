@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>업로드 &amp; 매칭 · AI 포화도 예측</title>
+<style>
+  :root {
+    --sebang-dark-gray: #333F48;
+    --sebang-dark-gray-600: #2B363D;
+    --sebang-gray-50: #F8F8F8;
+    --sebang-gray-100: #ECEEEF;
+    --sebang-gray-300: #C7CCCE;
+    --sebang-gray-400: #B5BBBD;
+    --sebang-gray-700: #717779;
+    --sebang-light-gray-50: #FBFBFB;
+    --sebang-light-gray-300: #E3E3E2;
+    --sebang-green-100: #CCEAEE;
+    --sebang-green-700: #006A76;
+    --sebang-green-800: #00535D;
+    --sebang-orange: #EB3300;
+    --sebang-orange-100: #FBD6CC;
+    --sebang-orange-600: #C82B00;
+    --sebang-orange-700: #A42400;
+
+    --color-bg-base: #FFFFFF;
+    --color-bg-surface: #FBFBFB;
+    --color-border: #D0D0CE;
+    --color-text-primary: #333F48;
+    --color-text-secondary: #717779;
+    --color-text-disabled: #B5BBBD;
+    --color-accent-primary: #EB3300;
+    --color-accent-secondary: #006A76;
+    --color-success: #008090;
+    --color-danger: #A42400;
+
+    --font-family-base: "Pretendard", "Noto Sans KR", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+    --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+    --radius-sm: 4px; --radius-md: 8px; --radius-lg: 16px; --radius-full: 999px;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--color-bg-base); color:var(--color-text-primary); font-family:var(--font-family-base); -webkit-font-smoothing:antialiased; }
+  .app { max-width:1280px; margin:0 auto; padding:0 var(--space-6) var(--space-8); }
+
+  .dummy-banner {
+    background: var(--sebang-gray-50);
+    border-bottom: 1px solid var(--color-border);
+    padding: var(--space-2) var(--space-6);
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    text-align: center;
+  }
+  .dummy-banner b { font-weight: 600; }
+
+  .topbar { display:flex; align-items:center; justify-content:space-between; padding:var(--space-5) 0; border-bottom:1px solid var(--color-border); margin-bottom:var(--space-6); }
+  .brand { display:flex; align-items:center; gap:var(--space-3); }
+  .brand-mark { width:36px; height:36px; border-radius:var(--radius-sm); background:var(--sebang-dark-gray); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:15px; }
+  .brand-text .title { font-size:15px; font-weight:700; line-height:1.3; }
+  .brand-text .sub { font-size:12px; color:var(--color-text-secondary); }
+  .nav-links { display:flex; gap:var(--space-5); font-size:14px; color:var(--color-text-secondary); }
+  .nav-links .active { color:var(--color-text-primary); font-weight:600; position:relative; }
+  .nav-links .active::after { content:""; position:absolute; left:0; right:0; bottom:-18px; height:2px; background:var(--sebang-dark-gray); }
+  .topbar-right { display:flex; align-items:center; gap:var(--space-4); }
+
+  .btn { display:inline-flex; align-items:center; gap:var(--space-2); font-family:var(--font-family-base); font-size:0.9375rem; font-weight:600; border-radius:var(--radius-md); padding:10px 20px; border:1px solid transparent; cursor:pointer; transition:background-color 150ms cubic-bezier(0.4,0,0.2,1); }
+  .btn-primary { background:var(--color-accent-primary); color:#fff; }
+  .btn-primary:hover { background:var(--sebang-orange-600); }
+  .btn-primary:disabled { background:var(--sebang-gray-300); color:var(--sebang-gray-700); cursor:not-allowed; }
+  .btn-secondary { background:transparent; border-color:var(--sebang-dark-gray); color:var(--color-text-primary); }
+  .btn-secondary:hover { background:var(--sebang-gray-50); }
+
+  .page-head { margin-bottom:var(--space-6); }
+  .page-head h1 { font-size:2rem; line-height:1.25; font-weight:700; margin:0 0 var(--space-1); }
+  .page-head p { margin:0; color:var(--color-text-secondary); font-size:0.875rem; }
+
+  .steps { display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-6); font-size:0.8125rem; color:var(--color-text-secondary); }
+  .step { display:flex; align-items:center; gap:var(--space-2); }
+  .step-num { width:22px; height:22px; border-radius:50%; background:var(--sebang-gray-100); color:var(--color-text-secondary); font-size:0.75rem; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .step.active .step-num { background:var(--sebang-dark-gray); color:#fff; }
+  .step.active { color:var(--color-text-primary); font-weight:600; }
+  .step.done .step-num { background:var(--sebang-green-700); color:#fff; }
+  .step-sep { width:24px; height:1px; background:var(--sebang-gray-300); }
+
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:var(--space-5); margin-bottom:var(--space-5); }
+  .card { background:var(--color-bg-surface); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:var(--space-5); }
+  .card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--space-4); }
+  .card-head h3 { font-size:1.25rem; font-weight:600; margin:0; }
+  .card-head .hint { font-size:0.75rem; color:var(--color-text-secondary); }
+
+  .dropzone {
+    border:2px dashed var(--sebang-gray-300);
+    border-radius:var(--radius-md);
+    padding:var(--space-7) var(--space-5);
+    text-align:center;
+    background:var(--color-bg-base);
+  }
+  .dropzone.filled { border-style:solid; border-color:var(--sebang-green-700); background:var(--sebang-green-100); }
+  .dropzone.dragover { border-color:var(--color-accent-primary); background:var(--sebang-orange-100); }
+  .dz-icon { width:40px; height:40px; margin:0 auto var(--space-3); border-radius:var(--radius-sm); background:var(--sebang-gray-100); display:flex; align-items:center; justify-content:center; font-size:18px; color:var(--color-text-secondary); }
+  .dropzone.filled .dz-icon { background:var(--sebang-green-700); color:#fff; }
+  .dz-title { font-size:0.9375rem; font-weight:600; margin-bottom:4px; }
+  .dz-sub { font-size:0.8125rem; color:var(--color-text-secondary); margin-bottom:var(--space-4); }
+  .file-chip { display:inline-flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--color-border); border-radius:var(--radius-full); padding:6px 14px; font-size:0.8125rem; }
+  .file-chip b { font-weight:600; }
+  .dz-replace { margin-top:var(--space-3); font-size:0.75rem; color:var(--color-text-secondary); }
+  .dz-replace label { color:var(--sebang-green-700); font-weight:600; cursor:pointer; text-decoration:underline; }
+
+  .col-list { list-style:none; margin:var(--space-4) 0 0; padding:0; display:flex; flex-wrap:wrap; gap:6px; }
+  .col-tag { font-size:0.75rem; background:var(--sebang-gray-100); color:var(--color-text-secondary); border-radius:var(--radius-sm); padding:3px 8px; }
+  .col-tag.x-factor { background:var(--sebang-green-100); color:var(--sebang-green-800); font-weight:600; }
+  .col-tag.excluded { background:var(--sebang-orange-100); color:var(--color-danger); font-weight:600; text-decoration:line-through; }
+
+  .badge { display:inline-flex; align-items:center; gap:4px; font-size:0.75rem; font-weight:600; border-radius:var(--radius-full); padding:3px 10px; }
+  .badge-ok { background:var(--sebang-green-100); color:var(--sebang-green-800); }
+  .badge-warn { background:var(--sebang-orange-100); color:var(--color-danger); }
+
+  .match-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-4); margin-bottom:var(--space-5); }
+  .match-card { background:var(--color-bg-surface); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:var(--space-5); }
+  .match-card .label { font-size:0.75rem; color:var(--color-text-secondary); margin-bottom:var(--space-2); display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
+  .match-card .value { font-size:1.75rem; font-weight:700; }
+  .match-card .note { font-size:0.75rem; color:var(--color-text-secondary); margin-top:var(--space-2); }
+  .match-card.ok .value { color:var(--sebang-green-700); }
+  .status-chip { display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:700; border-radius:var(--radius-full); padding:4px 14px; }
+  .status-chip.ok { background:var(--sebang-green-700); color:#fff; }
+  .status-chip.warn { background:var(--sebang-orange); color:#fff; }
+  .status-chip.unknown { background:var(--sebang-gray-400); color:#fff; }
+  .progress-track { height:10px; background:var(--sebang-gray-100); border-radius:var(--radius-full); overflow:hidden; margin-top:var(--space-3); }
+  .progress-fill { height:100%; background:var(--sebang-green-700); border-radius:var(--radius-full); }
+
+  table { width:100%; border-collapse:collapse; font-size:0.875rem; }
+  thead th { text-align:left; font-size:0.75rem; color:var(--color-text-secondary); font-weight:600; padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--color-border); }
+  tbody td { padding:var(--space-3); border-bottom:1px solid var(--sebang-light-gray-300); }
+  tbody tr:last-child td { border-bottom:none; }
+  .cell-lot { font-family:Consolas, monospace; font-size:0.8125rem; color:var(--color-text-secondary); }
+  .status-pill { display:inline-flex; align-items:center; gap:5px; border-radius:var(--radius-full); padding:3px 10px; font-size:0.75rem; font-weight:700; }
+  .status-pill.matched { background:var(--sebang-green-100); color:var(--sebang-green-800); }
+  .status-pill.unmatched { background:var(--sebang-gray-100); color:var(--color-text-secondary); }
+  .status-pill .dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+
+  .action-bar { display:flex; justify-content:flex-end; gap:var(--space-3); margin-top:var(--space-6); padding-top:var(--space-5); border-top:1px solid var(--color-border); }
+
+  .alert { display:flex; gap:var(--space-3); align-items:flex-start; background:var(--sebang-gray-50); border:1px solid var(--sebang-gray-300); border-radius:var(--radius-md); padding:var(--space-4); margin-bottom:var(--space-5); font-size:0.8125rem; color:var(--color-text-secondary); }
+  .alert.warn { background:var(--sebang-orange-100); border-color:transparent; color:var(--color-danger); }
+  .alert b { color:var(--color-text-primary); }
+
+  /* 수기입력 — 그룹 일괄 입력 (업로드·매칭 화면에 통합, 2026-09-10) */
+  .section-divider { display:flex; align-items:center; gap:var(--space-3); margin:var(--space-6) 0 var(--space-5); }
+  .section-divider .num { width:26px; height:26px; border-radius:50%; background:var(--sebang-dark-gray); color:#fff; font-size:0.8125rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .section-divider h2 { font-size:1.25rem; font-weight:700; margin:0; }
+  .section-divider .sub { font-size:0.8125rem; color:var(--color-text-secondary); margin-top:2px; }
+
+  .summary-row { display:grid; grid-template-columns:repeat(4,1fr); gap:var(--space-4); margin-bottom:var(--space-5); }
+  .sum-card { background:var(--color-bg-surface); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:var(--space-4) var(--space-5); }
+  .sum-card .label { font-size:0.75rem; color:var(--color-text-secondary); margin-bottom:var(--space-2); display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
+  .sum-card .value { font-size:1.5rem; font-weight:700; }
+  .sum-card.warn .value { color:var(--color-danger); }
+  .sum-card.ok .value { color:var(--sebang-green-700); }
+
+  .group-panel-grid { display:grid; grid-template-columns:1fr 1fr; gap:var(--space-5); }
+  .group-panel { background:var(--color-bg-base); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:var(--space-4); }
+  .group-panel .gp-title { font-size:0.9375rem; font-weight:700; margin-bottom:var(--space-1); display:flex; align-items:center; gap:var(--space-2); }
+  .group-panel .gp-key { font-size:0.6875rem; font-weight:700; color:var(--sebang-green-700); background:var(--sebang-green-100); border-radius:var(--radius-sm); padding:2px 8px; }
+  .group-panel .gp-desc { font-size:0.75rem; color:var(--color-text-secondary); margin:0 0 var(--space-4); line-height:1.5; }
+
+  .gp-row { display:flex; flex-direction:column; gap:6px; margin-bottom:var(--space-3); }
+  .gp-row label { font-size:0.75rem; font-weight:600; color:var(--color-text-secondary); }
+  .gp-row select, .gp-row input[type="text"] {
+    font-family:var(--font-family-base); font-size:0.8125rem;
+    padding:9px 10px; border:1px solid var(--color-border); border-radius:var(--radius-sm);
+    background:#fff; color:var(--color-text-primary); width:100%;
+  }
+  .gp-row select:focus, .gp-row input[type="text"]:focus { border-color:var(--color-accent-primary); outline:none; }
+  .gp-value-row { display:flex; gap:var(--space-2); align-items:flex-end; }
+  .gp-value-row .gp-row { flex:1; margin-bottom:0; }
+
+  .gp-preview { display:flex; align-items:center; justify-content:space-between; background:var(--sebang-gray-50); border-radius:var(--radius-sm); padding:var(--space-3); font-size:0.75rem; color:var(--color-text-secondary); margin-bottom:var(--space-3); }
+  .gp-preview b { color:var(--color-text-primary); }
+  .gp-preview .pending { color:var(--color-danger); font-weight:700; }
+
+  .gp-actions { display:flex; justify-content:flex-end; }
+  .btn-sm { padding:7px 14px; font-size:0.8125rem; border-radius:var(--radius-sm); }
+</style>
+</head>
+<body>
+
+<div class="dummy-banner">
+  이 화면의 파일명·건수·컬럼은 <b>가상의 더미 데이터</b> 예시입니다. 실제 CSV가 들어오면 매칭 결과·건수는 다시 계산됩니다.
+</div>
+
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">EB</div>
+      <div class="brand-text">
+        <div class="title">AI 포화도 예측 시스템</div>
+        <div class="sub">세방전지 품질경영팀 · 창원공장</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="nav-links">
+        <span class="active">업로드</span>
+        <span>분석 대시보드</span>
+        <span>상세 분석</span>
+        <span>예측</span>
+        <span>이력</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-head">
+    <h1>공정·시험 데이터 업로드</h1>
+    <p>공정 데이터와 시험 데이터 CSV를 파일 선택 또는 <b>끌어다 놓기(드래그앤드롭)</b>로 업로드하면 lot_id 기준으로 자동 매칭합니다. 매칭 후 비어있는 수기입력 항목까지 이 화면에서 바로 채울 수 있습니다. 1단(X→Y) 예측에는 공정 데이터 컬럼만 사용됩니다.</p>
+  </div>
+
+  <div class="steps">
+    <div class="step done"><span class="step-num">✓</span> 업로드·매칭·수기입력</div>
+    <span class="step-sep"></span>
+    <div class="step active"><span class="step-num">2</span> 1단·2단 분석 실행</div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-head">
+        <h3>공정 데이터 (process_data.csv)</h3>
+        <span class="badge badge-ok">업로드 완료</span>
+      </div>
+      <div class="dropzone filled" id="dz-process" data-dz>
+        <input type="file" id="file-process" accept=".csv" hidden />
+        <div class="dz-icon">✓</div>
+        <div class="dz-title">process_data.csv</div>
+        <div class="dz-sub">100행 · 27컬럼 · 필수 컬럼 확인 완료</div>
+        <span class="file-chip"><b>lot_id</b> 포함 · 245KB</span>
+        <div class="dz-replace"><label for="file-process">다른 파일 선택</label> 또는 이 영역에 파일을 끌어다 놓아 교체</div>
+      </div>
+      <ul class="col-list">
+        <li class="col-tag">lot_id</li>
+        <li class="col-tag">model_name</li>
+        <li class="col-tag x-factor">electrolyte_temp (X)</li>
+        <li class="col-tag x-factor">tank_temp (X)</li>
+        <li class="col-tag x-factor">soaking_time_sec (X)</li>
+        <li class="col-tag x-factor">aging_days (X)</li>
+        <li class="col-tag x-factor">cell1~6_weight (X)</li>
+        <li class="col-tag">fill_weight, water_loss (Y 산출 전용)</li>
+        <li class="col-tag">+16개 컬럼</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>시험 데이터 (test_data.csv)</h3>
+        <span class="badge badge-ok">업로드 완료</span>
+      </div>
+      <div class="dropzone filled" id="dz-test" data-dz>
+        <input type="file" id="file-test" accept=".csv" hidden />
+        <div class="dz-icon">✓</div>
+        <div class="dz-title">test_data.csv</div>
+        <div class="dz-sub">59행 · 12컬럼 · 필수 컬럼 확인 완료</div>
+        <span class="file-chip"><b>lot_id</b> 포함 · 98KB</span>
+        <div class="dz-replace"><label for="file-test">다른 파일 선택</label> 또는 이 영역에 파일을 끌어다 놓아 교체</div>
+      </div>
+      <ul class="col-list">
+        <li class="col-tag">lot_id</li>
+        <li class="col-tag">discharge_amount (Z)</li>
+        <li class="col-tag">capacity_rate (Z%)</li>
+        <li class="col-tag excluded">mt_voltage (1단 X 제외)</li>
+        <li class="col-tag excluded">mt_current (1단 X 제외)</li>
+        <li class="col-tag">+7개 컬럼</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="alert">
+    <span>ℹ️</span>
+    <div><b>미매칭 로트는 정상 상태입니다.</b> 시험은 전수가 아닌 샘플로 진행되므로, 공정 데이터에는 있지만 시험 데이터가 없는 로트가 다수 발생할 수 있습니다. 매칭 0건일 때만 lot_id 형식 불일치 등 이상 상태로 간주합니다.</div>
+  </div>
+
+  <div class="alert">
+    <span>🧪</span>
+    <div><b>MT(V)·MT(A)는 시험 단계에서만 측정되는 값</b>입니다(화성 후 전압 대비 편차 확인, 간이 CCA 스크리닝 용도). 미매칭 로트에는 이 값 자체가 없으므로 1단(X→Y) 예측 인자에서는 제외하고, 매칭된 로트 한정 참고 지표로만 사용합니다.</div>
+  </div>
+
+  <div class="match-summary">
+    <div class="match-card ok">
+      <div class="label">매칭 성공 <span class="status-chip ok">완료</span></div>
+      <div class="value">59건</div>
+      <div class="progress-track"><div class="progress-fill" style="width:59%"></div></div>
+      <div class="note">공정 100건 중 시험 결과와 매칭된 로트</div>
+    </div>
+    <div class="match-card">
+      <div class="label">미매칭 (시험 미실시) <span class="status-chip unknown">참고</span></div>
+      <div class="value">41건</div>
+      <div class="note">④ 예측 화면에서 X만으로 Y·Z 일괄 산출 대상으로 이관됩니다</div>
+    </div>
+    <div class="match-card">
+      <div class="label">매칭률</div>
+      <div class="value">59%</div>
+      <div class="note">시험 샘플링 비율과 일치 · 이상 없음</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3>매칭 결과 미리보기</h3>
+      <span class="hint">전체 100건 중 8건 표시</span>
+    </div>
+    <table>
+      <thead>
+        <tr><th>lot_id</th><th>모델</th><th>공정 데이터</th><th>시험 데이터</th><th>상태</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="cell-lot">105C26A016250954S3</td><td>AGM105_S1</td><td>✓</td><td>✓</td><td><span class="status-pill matched"><span class="dot"></span>매칭</span></td></tr>
+        <tr><td class="cell-lot">090C26A008250912S2</td><td>AGM90_S2</td><td>✓</td><td>✓</td><td><span class="status-pill matched"><span class="dot"></span>매칭</span></td></tr>
+        <tr><td class="cell-lot">080C26A014250933S4</td><td>AGM80_S4</td><td>✓</td><td>—</td><td><span class="status-pill unmatched"><span class="dot"></span>미매칭</span></td></tr>
+        <tr><td class="cell-lot">070C26A009250917S2</td><td>AGM70_S2</td><td>✓</td><td>✓</td><td><span class="status-pill matched"><span class="dot"></span>매칭</span></td></tr>
+        <tr><td class="cell-lot">060C26A031250960S3</td><td>AGM60_S3</td><td>✓</td><td>—</td><td><span class="status-pill unmatched"><span class="dot"></span>미매칭</span></td></tr>
+        <tr><td class="cell-lot">050C26A004250906S5</td><td>AGM50_S5</td><td>✓</td><td>✓</td><td><span class="status-pill matched"><span class="dot"></span>매칭</span></td></tr>
+        <tr><td class="cell-lot">105C26A021250958S1</td><td>AGM105_S1</td><td>✓</td><td>—</td><td><span class="status-pill unmatched"><span class="dot"></span>미매칭</span></td></tr>
+        <tr><td class="cell-lot">090C26A027250971S1</td><td>AGM90_S1</td><td>✓</td><td>✓</td><td><span class="status-pill matched"><span class="dot"></span>매칭</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-divider">
+    <div class="num">✓</div>
+    <div>
+      <h2>수기입력 — 매칭 후 남은 값 채우기</h2>
+      <div class="sub">수기입력 대상은 전해액온도·충전량·수조온도 3개 항목뿐입니다. CSV에 값이 있으면 자동으로 채워지며, 비어있는 로트는 아래 그룹 일괄 입력으로 한 번에 채웁니다.</div>
+    </div>
+  </div>
+
+  <div class="summary-row">
+    <div class="sum-card ok">
+      <div class="label">CSV 자동 입력 <span class="status-chip ok">완료</span></div>
+      <div class="value">59건</div>
+    </div>
+    <div class="sum-card warn">
+      <div class="label">직접 입력 필요 <span class="status-chip warn">확인 필요</span></div>
+      <div class="value">2건</div>
+    </div>
+    <div class="sum-card">
+      <div class="label">1단(X→Y) 분석 대상 확정</div>
+      <div class="value">57건</div>
+    </div>
+    <div class="sum-card">
+      <div class="label">입력 완료율</div>
+      <div class="value">96.6%</div>
+    </div>
+  </div>
+
+  <div class="alert">
+    <span>ℹ️</span>
+    <div>이번 더미 데이터 기준으로는 전해액온도·충전량·수조온도가 원본 CSV에 이미 포함되어 있습니다. 실제 운영 데이터에서 해당 컬럼이 CSV로 넘어오지 않는 달에도 이 화면(자동 채움 + 그룹 일괄 입력)에서 동일하게 대응할 수 있습니다.</div>
+  </div>
+
+  <!-- TODO: 수조온도는 향후 별도 업로드(수조 로그 CSV 등) 경로로도 채울 수 있게 확장 예정 — 우선 그룹 일괄 입력만 지원 -->
+
+  <div class="alert warn">
+    <span>⚠️</span>
+    <div><b>미입력 항목이 남아있는 로트 2건</b>은 1단(X→Y) 분석 대상에서 자동 제외됩니다. 아래 그룹 일괄 입력으로 값을 채우면 즉시 대상에 포함됩니다.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3>그룹 일괄 입력</h3>
+      <span class="hint">같은 그룹의 로트는 화성 레시피·수조 운용을 공유한다는 전제로 값 하나를 그룹 전체에 한 번에 반영합니다</span>
+    </div>
+    <div class="group-panel-grid">
+      <div class="group-panel">
+        <div class="gp-title">충전량(Ah) <span class="gp-key">형명 단위</span></div>
+        <p class="gp-desc">같은 형명(<code>model_name</code>)은 동일한 화성 충전 레시피를 쓴다는 전제로 그룹화합니다. 형명 표기(예: <code>AGM105_S1</code>)의 접미 문자가 사실상 바이어/스펙 구분 코드 역할을 하는 것으로 보여(<code>lot_id</code> 끝자리와 일치, 담당자 확인 필요·<code>prd.md</code> §10-19), 형명 하나로 그룹을 특정할 수 있습니다.</p>
+        <div class="gp-row">
+          <label>형명 선택</label>
+          <select>
+            <option>AGM90_S2 (전체 4건 · 미입력 1건)</option>
+            <option>AGM70_S2 (전체 3건 · 미입력 1건)</option>
+            <option>AGM105_S1 (전체 6건 · 미입력 0건)</option>
+          </select>
+        </div>
+        <div class="gp-preview">이 형명(<b>AGM90_S2</b>)의 로트 <b>4건</b> 중 미입력 <span class="pending">1건</span> · 이미 값이 있는 3건은 덮어쓰지 않습니다</div>
+        <div class="gp-value-row">
+          <div class="gp-row">
+            <label>충전량(Ah) 일괄 입력값</label>
+            <input type="text" placeholder="예: 94.6" />
+          </div>
+        </div>
+        <div class="gp-actions">
+          <button class="btn btn-primary btn-sm">미입력 1건에 일괄 반영</button>
+        </div>
+      </div>
+
+      <div class="group-panel">
+        <div class="gp-title">전해액온도·수조온도(℃) <span class="gp-key">형명 + 생산일자 단위</span></div>
+        <p class="gp-desc">같은 형명이 같은 날 같은 수조에 함께 투입되어 충전되므로, 형명만으로는 그룹이 너무 넓습니다. <code>model_name</code> + <code>prod_date</code> 조합으로 그룹화해 같은 날 배치된 로트에 동일 값을 반영합니다.</p>
+        <div class="gp-row">
+          <label>형명 선택</label>
+          <select>
+            <option>AGM70_S2</option>
+            <option>AGM90_S2</option>
+          </select>
+        </div>
+        <div class="gp-row">
+          <label>생산일자 선택</label>
+          <select>
+            <option>2026-01-01 (전체 3건 · 미입력 1건)</option>
+            <option>2026-01-03 (전체 2건 · 미입력 0건)</option>
+          </select>
+        </div>
+        <div class="gp-preview">이 형명·날짜(<b>AGM70_S2 · 2026-01-01</b>)의 로트 <b>3건</b> 중 미입력 <span class="pending">1건</span></div>
+        <div class="gp-value-row">
+          <div class="gp-row">
+            <label>전해액온도(℃)</label>
+            <input type="text" placeholder="예: 31.2" />
+          </div>
+          <div class="gp-row">
+            <label>수조온도(℃)</label>
+            <input type="text" placeholder="예: 27.6" />
+          </div>
+        </div>
+        <div class="gp-actions">
+          <button class="btn btn-primary btn-sm">미입력 1건에 일괄 반영</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="action-bar">
+    <button class="btn btn-secondary">다시 업로드</button>
+    <button class="btn btn-primary">1단·2단 분석 실행 (57건)</button>
+  </div>
+
+  <div class="foot-note" style="text-align:center; font-size:0.75rem; color:var(--color-text-secondary); margin-top:var(--space-6); padding-top:var(--space-5); border-top:1px solid var(--color-border);">
+    표시된 파일 크기·건수·컬럼 목록·자동입력값·그룹 구성은 더미 데이터 기반 예시이며 실제 값이 아닙니다. 전 구간 로컬 처리, 외부 전송 없음. 형명 접미 문자를 "바이어 코드"로 간주하는 가정은 담당자 확인 전까지 잠정 설계입니다(<code>prd.md</code> §10-19).
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('[data-dz]').forEach(function (zone) {
+    var input = zone.querySelector('input[type="file"]');
+    ['dragenter', 'dragover'].forEach(function (evt) {
+      zone.addEventListener(evt, function (e) {
+        e.preventDefault();
+        zone.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (evt) {
+      zone.addEventListener(evt, function (e) {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+      });
+    });
+    zone.addEventListener('drop', function (e) {
+      var file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file && input) {
+        input.files = e.dataTransfer.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+  });
+</script>
+</body>
+</html>

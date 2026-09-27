@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>상세 분석 · AI 포화도 예측</title>
+<style>
+  :root {
+    --sebang-dark-gray: #333F48;
+    --sebang-dark-gray-100: #D6D9DA;
+    --sebang-dark-gray-600: #2B363D;
+    --sebang-dark-gray-700: #242C32;
+    --sebang-gray-50: #F8F8F8;
+    --sebang-gray-100: #ECEEEF;
+    --sebang-gray-300: #C7CCCE;
+    --sebang-gray-400: #B5BBBD;
+    --sebang-gray-700: #717779;
+    --sebang-light-gray-50: #FBFBFB;
+    --sebang-light-gray-300: #E3E3E2;
+    --sebang-green-100: #CCEAEE;
+    --sebang-green-300: #66C1CB;
+    --sebang-green-700: #006A76;
+    --sebang-green-800: #00535D;
+    --sebang-orange: #EB3300;
+    --sebang-orange-100: #FBD6CC;
+    --sebang-orange-600: #C82B00;
+    --sebang-orange-700: #A42400;
+
+    --color-bg-base: #FFFFFF;
+    --color-bg-surface: #FBFBFB;
+    --color-border: #D0D0CE;
+    --color-text-primary: #333F48;
+    --color-text-secondary: #717779;
+    --color-accent-primary: #EB3300;
+    --color-accent-secondary: #006A76;
+    --color-danger: #A42400;
+
+    --font-family-base: "Pretendard", "Noto Sans KR", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+    --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+    --radius-sm: 4px; --radius-md: 8px; --radius-lg: 16px; --radius-full: 999px;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--color-bg-base); color:var(--color-text-primary); font-family:var(--font-family-base); -webkit-font-smoothing:antialiased; }
+  .app { max-width:1280px; margin:0 auto; padding:0 var(--space-6) var(--space-8); }
+
+  .dummy-banner {
+    background: var(--sebang-gray-50);
+    border-bottom: 1px solid var(--color-border);
+    padding: var(--space-2) var(--space-6);
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    text-align: center;
+  }
+  .dummy-banner b { font-weight: 600; }
+
+  .topbar { display:flex; align-items:center; justify-content:space-between; padding:var(--space-5) 0; border-bottom:1px solid var(--color-border); margin-bottom:var(--space-6); }
+  .brand { display:flex; align-items:center; gap:var(--space-3); }
+  .brand-mark { width:36px; height:36px; border-radius:var(--radius-sm); background:var(--sebang-dark-gray); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:15px; }
+  .brand-text .title { font-size:15px; font-weight:700; line-height:1.3; }
+  .brand-text .sub { font-size:12px; color:var(--color-text-secondary); }
+  .topbar-right { display:flex; align-items:center; gap:var(--space-4); }
+  .nav-links { display:flex; gap:var(--space-5); font-size:14px; color:var(--color-text-secondary); }
+  .nav-links .active { color:var(--color-text-primary); font-weight:600; position:relative; }
+  .nav-links .active::after { content:""; position:absolute; left:0; right:0; bottom:-18px; height:2px; background:var(--sebang-dark-gray); }
+
+  .btn { display:inline-flex; align-items:center; gap:var(--space-2); font-family:var(--font-family-base); font-size:0.9375rem; font-weight:600; border-radius:var(--radius-md); padding:10px 20px; border:1px solid transparent; cursor:pointer; }
+  .btn-primary { background:var(--color-accent-primary); color:#fff; }
+  .btn-primary:hover { background:var(--sebang-orange-600); }
+  .btn-secondary { background:transparent; border-color:var(--sebang-dark-gray); color:var(--color-text-primary); }
+  .btn-secondary:hover { background:var(--sebang-gray-50); }
+
+  .page-head { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:var(--space-5); flex-wrap:wrap; gap:var(--space-4); }
+  .page-head h1 { font-size:2rem; line-height:1.25; font-weight:700; margin:0 0 var(--space-1); }
+  .page-head p { margin:0; color:var(--color-text-secondary); font-size:0.875rem; }
+  .meta-pill { display:inline-flex; align-items:center; gap:var(--space-2); background:var(--color-bg-surface); border:1px solid var(--color-border); border-radius:var(--radius-full); padding:6px 14px; font-size:0.75rem; color:var(--color-text-secondary); }
+  .meta-pill b { color:var(--color-text-primary); }
+
+  .vif-note {
+    display:flex; align-items:center; gap:var(--space-2);
+    font-size:0.75rem; color:var(--color-text-secondary);
+    background:var(--color-bg-base); border:1px solid var(--sebang-light-gray-300);
+    border-radius:var(--radius-sm); padding:var(--space-2) var(--space-3);
+    margin-bottom:var(--space-5);
+  }
+
+  /* Group filter chips */
+  .filter-row { display:flex; gap:var(--space-2); margin-bottom:var(--space-5); flex-wrap:wrap; }
+  .filter-chip {
+    font-size:0.8125rem; font-weight:600; padding:6px 16px;
+    border-radius:var(--radius-full); border:1px solid var(--color-border);
+    color:var(--color-text-secondary); background:var(--color-bg-base);
+    cursor:pointer;
+  }
+  .filter-chip.active { background:var(--sebang-dark-gray); color:#fff; border-color:var(--sebang-dark-gray); }
+
+  /* Capacity group summary cards */
+  .group-grid { display:grid; grid-template-columns:repeat(6, 1fr); gap:var(--space-3); margin-bottom:var(--space-6); }
+  .group-card {
+    background:var(--color-bg-surface); border:1px solid var(--color-border);
+    border-radius:var(--radius-md); padding:var(--space-4);
+  }
+  .group-card .cap-title { font-size:0.9375rem; font-weight:700; margin-bottom:var(--space-2); }
+  .group-card .cap-sub { font-size:0.6875rem; color:var(--color-text-secondary); margin-bottom:var(--space-3); }
+  .group-metric { display:flex; justify-content:space-between; font-size:0.75rem; padding:3px 0; }
+  .group-metric .k { color:var(--color-text-secondary); }
+  .group-metric .v { font-weight:700; }
+  .group-metric .v.danger { color:var(--color-danger); }
+  .group-metric .v.ok { color:var(--sebang-green-700); }
+
+  .card { background:var(--color-bg-surface); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:var(--space-5); margin-bottom:var(--space-5); }
+  .card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--space-4); flex-wrap:wrap; gap:var(--space-2); }
+  .card-head h3 { font-size:1.25rem; font-weight:600; margin:0; }
+  .card-head .hint { font-size:0.75rem; color:var(--color-text-secondary); }
+
+  .legend { display:flex; gap:var(--space-4); font-size:0.75rem; color:var(--color-text-secondary); flex-wrap:wrap; }
+  .legend span { display:inline-flex; align-items:center; gap:4px; }
+  .legend .sw { width:10px; height:10px; border-radius:3px; display:inline-block; }
+
+  .table-scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:0.8125rem; min-width:920px; }
+  thead th {
+    text-align:left; font-size:0.6875rem; color:var(--color-text-secondary); font-weight:700;
+    padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--color-border);
+    white-space:nowrap; text-transform:uppercase; letter-spacing:0.02em;
+  }
+  tbody td { padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--sebang-light-gray-300); white-space:nowrap; }
+  tbody tr:hover { background:var(--sebang-gray-50); }
+  tbody tr.group-row td {
+    background:var(--sebang-dark-gray); color:#fff; font-weight:700; font-size:0.8125rem;
+    padding:var(--space-2) var(--space-3);
+  }
+  .model-name { font-weight:700; }
+  .x-val { color:var(--color-text-secondary); }
+  .y-val, .z-val { font-weight:700; }
+  .judge-pill {
+    display:inline-flex; align-items:center; gap:4px; border-radius:var(--radius-full);
+    padding:2px 9px; font-size:0.6875rem; font-weight:700;
+  }
+  .judge-pill.pass { background:var(--sebang-green-100); color:var(--sebang-green-800); }
+  .judge-pill.fail { background:var(--sebang-orange-100); color:var(--color-danger); }
+  .judge-pill.untested { background:var(--sebang-gray-100); color:var(--color-text-secondary); }
+  .judge-pill .dot { width:5px; height:5px; border-radius:50%; background:currentColor; }
+
+  .foot-note { text-align:center; font-size:0.75rem; color:var(--color-text-secondary); margin-top:var(--space-6); padding-top:var(--space-5); border-top:1px solid var(--color-border); }
+
+  /* Trend chart */
+  .trend-controls { display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); flex-wrap:wrap; margin-bottom:var(--space-4); }
+  .model-select-row { display:flex; align-items:center; gap:var(--space-2); flex-wrap:wrap; }
+  .model-select-row label { font-size:0.75rem; color:var(--color-text-secondary); margin-right:4px; }
+  .model-chip {
+    font-size:0.75rem; font-weight:600; padding:5px 12px; border-radius:var(--radius-full);
+    border:1px solid var(--color-border); color:var(--color-text-secondary); background:var(--color-bg-base);
+    cursor:pointer;
+  }
+  .model-chip.active { background:var(--sebang-green-700); color:#fff; border-color:var(--sebang-green-700); }
+  .period-tabs { display:flex; gap:4px; background:var(--sebang-gray-100); border-radius:var(--radius-full); padding:3px; }
+  .period-tab {
+    font-size:0.8125rem; font-weight:600; padding:6px 16px; border-radius:var(--radius-full);
+    color:var(--color-text-secondary); cursor:pointer; border:none; background:transparent;
+    font-family:var(--font-family-base);
+  }
+  .period-tab.active { background:#fff; color:var(--color-text-primary); box-shadow:0 1px 3px rgba(51,63,72,0.15); }
+
+  .trend-chart-wrap { position:relative; }
+  .trend-view { display:none; }
+  .trend-view.active { display:block; }
+  .trend-svg { width:100%; height:auto; display:block; }
+  .trend-line { fill:none; stroke:var(--sebang-green-700); stroke-width:2.5; }
+  .trend-area { fill:url(#trendGradient); opacity:0.5; }
+  .trend-point { fill:var(--sebang-green-700); stroke:#fff; stroke-width:1.5; }
+  .trend-point.below { fill:var(--color-danger); }
+  .spec-line { stroke:var(--sebang-orange-700); stroke-width:1.5; stroke-dasharray:5,4; }
+  .spec-label { fill:var(--color-danger); font-size:11px; font-weight:700; }
+  .axis-label { fill:var(--sebang-gray-700); font-size:11px; }
+  .grid-line { stroke:var(--sebang-light-gray-300); stroke-width:1; }
+  .trend-caption { font-size:0.75rem; color:var(--color-text-secondary); margin-top:var(--space-3); line-height:1.6; }
+  .empty-year-note {
+    display:flex; align-items:center; justify-content:center; flex-direction:column; gap:var(--space-2);
+    padding:var(--space-7) var(--space-5); color:var(--color-text-secondary); font-size:0.8125rem;
+    background:var(--sebang-gray-50); border-radius:var(--radius-md); border:1px dashed var(--sebang-gray-300);
+  }
+
+  @media (max-width: 1100px) {
+    .group-grid { grid-template-columns:repeat(3, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .group-grid { grid-template-columns:repeat(2, 1fr); }
+  }
+
+  /* Raw data click affordance */
+  .clickable-model { cursor:pointer; color:var(--sebang-green-700); text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px; }
+  .clickable-model:hover { color:var(--sebang-green-800); }
+
+  /* Raw data modal */
+  .modal-overlay {
+    display:none; position:fixed; inset:0; background:rgba(36,44,50,0.55);
+    z-index:1000; align-items:center; justify-content:center; padding:var(--space-5);
+  }
+  .modal-overlay.open { display:flex; }
+  .modal-box {
+    background:var(--color-bg-base); border-radius:var(--radius-lg); width:100%; max-width:1040px;
+    max-height:85vh; display:flex; flex-direction:column; box-shadow:0 12px 40px rgba(36,44,50,0.25);
+  }
+  .modal-head {
+    display:flex; align-items:center; justify-content:space-between; gap:var(--space-4);
+    padding:var(--space-5); border-bottom:1px solid var(--color-border);
+  }
+  .modal-head h3 { margin:0; font-size:1.25rem; font-weight:700; }
+  .modal-head .hint { font-size:0.75rem; color:var(--color-text-secondary); margin-top:2px; }
+  .modal-close {
+    border:none; background:var(--sebang-gray-100); color:var(--color-text-primary);
+    width:32px; height:32px; border-radius:50%; font-size:1rem; cursor:pointer; line-height:1;
+    flex-shrink:0;
+  }
+  .modal-close:hover { background:var(--sebang-gray-300); }
+  .modal-body { padding:var(--space-5); overflow-y:auto; }
+  .modal-body .table-scroll { overflow-x:auto; }
+  .modal-body table { min-width:760px; }
+  .modal-note {
+    font-size:0.75rem; color:var(--color-text-secondary); background:var(--sebang-gray-50);
+    border:1px solid var(--sebang-light-gray-300); border-radius:var(--radius-sm);
+    padding:var(--space-2) var(--space-3); margin-bottom:var(--space-4);
+  }
+
+  /* ===== 3단계 흐름 인디케이터 ===== */
+  .steps { display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-6); font-size:0.8125rem; color:var(--color-text-secondary); font-weight:600; }
+  .step { display:flex; align-items:center; gap:var(--space-2); text-decoration:none; color:inherit; }
+  .step-num { width:24px; height:24px; border-radius:50%; background:var(--sebang-gray-100); color:var(--color-text-secondary); font-size:0.75rem; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .step.active .step-num { background:var(--sebang-dark-gray); color:#fff; }
+  .step.active { color:var(--color-text-primary); font-weight:700; }
+  .step.done .step-num { background:var(--sebang-green-700); color:#fff; }
+  .step-sep { width:32px; height:1px; background:var(--sebang-gray-300); }
+
+  /* ===== Layer 0: 초대형 결론 배너 ===== */
+  .hero-verdict { position:relative; display:flex; align-items:center; gap:var(--space-6); border-radius:var(--radius-lg); padding:var(--space-6) var(--space-7); margin-bottom:var(--space-6); overflow:hidden; background:var(--sebang-dark-gray); }
+  .hero-watermark { position:absolute; right:var(--space-4); top:50%; transform:translateY(-50%); font-size:9rem; font-weight:700; color:rgba(255,255,255,0.06); line-height:1; letter-spacing:-6px; pointer-events:none; user-select:none; }
+  .hero-verdict .hero-icon { font-size:3.25rem; line-height:1; flex-shrink:0; z-index:1; }
+  .hero-body { z-index:1; }
+  .hero-eyebrow-row { display:flex; align-items:center; gap:var(--space-3); margin-bottom:var(--space-2); }
+  .hero-eyebrow { font-size:0.75rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:rgba(255,255,255,0.65); }
+  .hero-title { font-size:2rem; font-weight:700; line-height:1.3; margin:0 0 var(--space-3); color:#fff; }
+  .hero-desc { font-size:1rem; color:rgba(255,255,255,0.85); line-height:1.6; max-width:62ch; }
+
+  .status-chip { display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:700; border-radius:var(--radius-full); padding:4px 14px; }
+  .status-chip.ok { background:var(--sebang-green-700); color:#fff; }
+  .status-chip.warn { background:var(--sebang-orange); color:#fff; }
+  .status-chip.unknown { background:var(--sebang-gray-400); color:#fff; }
+
+  /* ===== "형명 전체 표로 보기" — 기본 접힘 ===== */
+  .evidence-toggle { margin-bottom:var(--space-6); }
+  .evidence-toggle > summary { cursor:pointer; list-style:none; display:flex; align-items:center; gap:var(--space-3); font-size:1.25rem; font-weight:700; padding:var(--space-4) var(--space-5); border:1px solid var(--color-border); border-radius:var(--radius-md); background:var(--color-bg-surface); color:var(--color-text-primary); }
+  .evidence-toggle > summary::-webkit-details-marker { display:none; }
+  .evidence-toggle > summary::before { content:"▸"; color:var(--sebang-green-700); font-size:1rem; transition:transform 150ms ease; }
+  .evidence-toggle[open] > summary::before { transform:rotate(90deg); }
+  .evidence-toggle > summary .summary-sub { font-size:0.875rem; font-weight:500; color:var(--color-text-secondary); margin-left:var(--space-2); }
+  .evidence-toggle-body { padding:var(--space-5); border:1px solid var(--color-border); border-top:none; border-radius:0 0 var(--radius-md) var(--radius-md); background:var(--color-bg-base); }
+</style>
+</head>
+<body>
+
+<div class="dummy-banner">
+  이 화면의 모든 형명(모델)별 수치·추이 그래프는 <b>가상의 더미 데이터</b>로 계산한 예시입니다(SPEC 하한도 예시값: Y 91.5% / Z 96.0%). 실제로는 업로드마다 누적 저장된 이력을 기준으로 재계산됩니다.
+</div>
+
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">EB</div>
+      <div class="brand-text">
+        <div class="title">AI 포화도 예측 시스템</div>
+        <div class="sub">세방전지 품질경영팀 · 창원공장</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="nav-links">
+        <span>업로드</span>
+        <span>분석 대시보드</span>
+        <span class="active">상세 분석</span>
+        <span>예측</span>
+        <span>이력</span>
+      </div>
+      <button class="btn btn-secondary">CSV 내보내기</button>
+      <button class="btn btn-primary">분석 실행</button>
+    </div>
+  </div>
+
+  <div class="steps">
+    <a href="01_upload_matching.html" class="step done"><span class="step-num">✓</span> ① 업로드</a>
+    <span class="step-sep"></span>
+    <a href="analysis_dashboard.html" class="step done"><span class="step-num">✓</span> ② 결과 확인</a>
+    <span class="step-sep"></span>
+    <span class="step active"><span class="step-num">3</span> ③ 상세 조회 (지금 여기)</span>
+  </div>
+
+  <div class="page-head">
+    <div>
+      <h1>형명(모델)별 X·Y·Z 상세 분석</h1>
+      <p>정격용량 6개 용량군, 35개 형명별로 공정인자(X) 평균·포화도(Y)·20시간 용량(Z)을 한 화면에서 비교합니다.</p>
+    </div>
+    <div class="meta-pill">
+      전체 <b>35개 형명</b> · 6개 용량군(50/60/70/80/90/105Ah) · 공정 100건 / 시험 매칭 59건
+    </div>
+  </div>
+
+  <!-- ===== Layer 0: 초대형 결론 배너 ===== -->
+  <div class="hero-verdict">
+    <div class="hero-watermark">EB</div>
+    <div class="hero-icon">⚠️</div>
+    <div class="hero-body">
+      <div class="hero-eyebrow-row">
+        <span class="hero-eyebrow">종합 결론</span>
+        <span class="status-chip warn">확인 필요</span>
+      </div>
+      <div class="hero-title">SPEC 미달 형명이 있어요 — Y 8개 · Z 4개</div>
+      <div class="hero-desc">35개 형명 중 포화도(Y) 8개, 20시간 용량(Z) 4개 형명이 SPEC 예시 기준(Y 91.5% / Z 96.0%)에 못 미쳤습니다. 아래 용량군 카드와 전체 표에서 어떤 형명인지 바로 확인하세요.</div>
+      <div class="hero-updated" style="margin-top:var(--space-4); font-size:0.75rem; color:rgba(255,255,255,0.55);">공정 100건 · 시험 매칭 59건 기준</div>
+    </div>
+  </div>
+
+  <div class="vif-note">🔗 이 화면은 ③ 분석 대시보드의 전체 회귀결과를 형명 단위로 쪼개 본 것입니다. 형명 간 비교 시 다중공선성(모델 크기 효과) 때문에 <b>충전율·주입량비율 등 무차원 인자로 비교</b>해야 함을 유의하세요(원본 charge_amount·fill_weight 그대로 비교 금지).</div>
+
+  <div class="filter-row">
+    <span class="filter-chip active">전체 용량군</span>
+    <span class="filter-chip">50Ah</span>
+    <span class="filter-chip">60Ah</span>
+    <span class="filter-chip">70Ah</span>
+    <span class="filter-chip">80Ah</span>
+    <span class="filter-chip">90Ah</span>
+    <span class="filter-chip">105Ah</span>
+  </div>
+
+  <!-- Capacity group summary -->
+  <div class="group-grid">
+    <div class="group-card">
+      <div class="cap-title">50Ah</div>
+      <div class="cap-sub">6개 형명 · 16로트</div>
+      <div class="group-metric"><span class="k">평균 Y</span><span class="v">91.80%</span></div>
+      <div class="group-metric"><span class="k">평균 Z</span><span class="v">97.49%</span></div>
+      <div class="group-metric"><span class="k">Y 부적합</span><span class="v danger">1개</span></div>
+      <div class="group-metric"><span class="k">Z 부적합</span><span class="v ok">0개</span></div>
+    </div>
+    <div class="group-card">
+      <div class="cap-title">60Ah</div>
+      <div class="cap-sub">6개 형명 · 12로트</div>
+      <div class="group-metric"><span class="k">평균 Y</span><span class="v">92.08%</span></div>
+      <div class="group-metric"><span class="k">평균 Z</span><span class="v">98.36%</span></div>
+      <div class="group-metric"><span class="k">Y 부적합</span><span class="v danger">2개</span></div>
+      <div class="group-metric"><span class="k">Z 부적합</span><span class="v danger">1개</span></div>
+    </div>
+    <div class="group-card">
+      <div class="cap-title">70Ah</div>
+      <div class="cap-sub">6개 형명 · 18로트</div>
+      <div class="group-metric"><span class="k">평균 Y</span><span class="v">92.28%</span></div>
+      <div class="group-metric"><span class="k">평균 Z</span><span class="v">97.42%</span></div>
+      <div class="group-metric"><span class="k">Y 부적합</span><span class="v danger">1개</span></div>
+      <div class="group-metric"><span class="k">Z 부적합</span><span class="v danger">2개</span></div>
+    </div>
+    <div class="group-card">
+      <div class="cap-title">80Ah</div>
+      <div class="cap-sub">6개 형명 · 14로트</div>
+      <div class="group-metric"><span class="k">평균 Y</span><span class="v">91.90%</span></div>
+      <div class="group-metric"><span class="k">평균 Z</span><span class="v">98.44%</span></div>
+      <div class="group-metric"><span class="k">Y 부적합</span><span class="v danger">1개</span></div>
+      <div class="group-metric"><span class="k">Z 부적합</span><span class="v ok">0개</span></div>
+    </div>
+    <div class="group-card">
+      <div class="cap-title">90Ah</div>
+      <div class="cap-sub">6개 형명 · 23로트</div>
+      <div class="group-metric"><span class="k">평균 Y</span><span class="v">91.94%</span></div>
+      <div class="group-metric"><span class="k">평균 Z</span><span class="v">98.06%</span></div>
+      <div class="group-metric"><span class="k">Y 부적합</span><span class="v danger">1개</span></div>
+      <div class="group-metric"><span class="k">Z 부적합</span><span class="v ok">0개</span></div>
+    </div>
+    <div class="group-card">
+      <div class="cap-title">105Ah</div>
+      <div class="cap-sub">5개 형명 · 17로트</div>
+      <div class="group-metric"><span class="k">평균 Y</span><span class="v">91.83%</span></div>
+      <div class="group-metric"><span class="k">평균 Z</span><span class="v">98.37%</span></div>
+      <div class="group-metric"><span class="k">Y 부적합</span><span class="v danger">2개</span></div>
+      <div class="group-metric"><span class="k">Z 부적합</span><span class="v danger">1개</span></div>
+    </div>
+  </div>
+
+  <!-- Y trend chart -->
+  <div class="card">
+    <div class="card-head">
+      <h3>형명별 포화도(Y) 추이</h3>
+      <span class="hint">업로드마다 누적 저장되는 이력(prod_date 기준) 을 일간·월간·연간으로 집계</span>
+    </div>
+    <div class="trend-controls">
+      <div class="model-select-row">
+        <label>대상:</label>
+        <span class="model-chip active" onclick="setTrendModel(this,'전체 평균')">전체 평균</span>
+        <span class="model-chip" onclick="setTrendModel(this,'AGM90_S2')">AGM90_S2</span>
+        <span class="model-chip" onclick="setTrendModel(this,'AGM70_H1')">AGM70_H1</span>
+        <span class="model-chip" onclick="setTrendModel(this,'AGM105_S3')">AGM105_S3</span>
+      </div>
+      <div class="period-tabs">
+        <button class="period-tab" onclick="setTrendPeriod(this,'daily')">일간</button>
+        <button class="period-tab active" onclick="setTrendPeriod(this,'monthly')">월간</button>
+        <button class="period-tab" onclick="setTrendPeriod(this,'yearly')">연간</button>
+      </div>
+    </div>
+
+    <div class="trend-chart-wrap">
+      <!-- Daily view (예시: 2026년 1월) -->
+      <div class="trend-view" data-period="daily">
+        <svg class="trend-svg" viewBox="0 0 900 240" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#006A76" stop-opacity="0.35"/>
+              <stop offset="100%" stop-color="#006A76" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <line class="grid-line" x1="40" y1="20" x2="860" y2="20"/>
+          <line class="grid-line" x1="40" y1="110" x2="860" y2="110"/>
+          <line class="grid-line" x1="40" y1="200" x2="860" y2="200"/>
+          <line class="spec-line" x1="40" y1="110" x2="860" y2="110"/>
+          <text class="spec-label" x="700" y="105">Y SPEC 하한 91.5% (예시)</text>
+          <polygon class="trend-area" points="40,79.4 176.7,58.1 313.3,161.6 450,66.5 586.7,92.3 723.3,84.5 860,94.6 860,200 40,200"/>
+          <polyline class="trend-line" points="40,79.4 176.7,58.1 313.3,161.6 450,66.5 586.7,92.3 723.3,84.5 860,94.6"/>
+          <circle class="trend-point" cx="40" cy="79.4" r="4"/>
+          <circle class="trend-point" cx="176.7" cy="58.1" r="4"/>
+          <circle class="trend-point below" cx="313.3" cy="161.6" r="4"/>
+          <circle class="trend-point" cx="450" cy="66.5" r="4"/>
+          <circle class="trend-point" cx="586.7" cy="92.3" r="4"/>
+          <circle class="trend-point" cx="723.3" cy="84.5" r="4"/>
+          <circle class="trend-point" cx="860" cy="94.6" r="4"/>
+          <text class="axis-label" x="40" y="222">1/1</text>
+          <text class="axis-label" x="176.7" y="222">1/5</text>
+          <text class="axis-label" x="313.3" y="222">1/9</text>
+          <text class="axis-label" x="450" y="222">1/13</text>
+          <text class="axis-label" x="586.7" y="222">1/17</text>
+          <text class="axis-label" x="723.3" y="222">1/21</text>
+          <text class="axis-label" x="860" y="222" text-anchor="end">1/25</text>
+        </svg>
+        <div class="trend-caption">예시: 2026년 1월 일별 평균 Y(잔존율). 9일에 89.49%로 SPEC 하한(91.5%, 예시값)을 하회한 지점이 붉은 점으로 표시됩니다.</div>
+      </div>
+
+      <!-- Monthly view (2026년 1~12월) -->
+      <div class="trend-view active" data-period="monthly">
+        <svg class="trend-svg" viewBox="0 0 900 240" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="trendGradient2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#006A76" stop-opacity="0.35"/>
+              <stop offset="100%" stop-color="#006A76" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <line class="grid-line" x1="40" y1="20" x2="860" y2="20"/>
+          <line class="grid-line" x1="40" y1="110" x2="860" y2="110"/>
+          <line class="grid-line" x1="40" y1="200" x2="860" y2="200"/>
+          <line class="spec-line" x1="40" y1="155" x2="860" y2="155"/>
+          <text class="spec-label" x="700" y="150">Y SPEC 하한 91.5% (예시)</text>
+          <polygon fill="url(#trendGradient2)" opacity="0.5" points="40,74.9 114.5,94.7 189,124.4 263.5,108.2 338,129.8 412.5,150.5 487,87.5 561.5,104.6 636,139.7 710.5,71.3 785,74.9 859.5,122.6 859.5,200 40,200"/>
+          <polyline class="trend-line" points="40,74.9 114.5,94.7 189,124.4 263.5,108.2 338,129.8 412.5,150.5 487,87.5 561.5,104.6 636,139.7 710.5,71.3 785,74.9 859.5,122.6"/>
+          <circle class="trend-point" cx="40" cy="74.9" r="4"/>
+          <circle class="trend-point" cx="114.5" cy="94.7" r="4"/>
+          <circle class="trend-point" cx="189" cy="124.4" r="4"/>
+          <circle class="trend-point" cx="263.5" cy="108.2" r="4"/>
+          <circle class="trend-point" cx="338" cy="129.8" r="4"/>
+          <circle class="trend-point" cx="412.5" cy="150.5" r="4"/>
+          <circle class="trend-point" cx="487" cy="87.5" r="4"/>
+          <circle class="trend-point" cx="561.5" cy="104.6" r="4"/>
+          <circle class="trend-point" cx="636" cy="139.7" r="4"/>
+          <circle class="trend-point" cx="710.5" cy="71.3" r="4"/>
+          <circle class="trend-point" cx="785" cy="74.9" r="4"/>
+          <circle class="trend-point" cx="859.5" cy="122.6" r="4"/>
+          <text class="axis-label" x="40" y="222">1월</text>
+          <text class="axis-label" x="189" y="222">3월</text>
+          <text class="axis-label" x="338" y="222">5월</text>
+          <text class="axis-label" x="487" y="222">7월</text>
+          <text class="axis-label" x="636" y="222">9월</text>
+          <text class="axis-label" x="859.5" y="222" text-anchor="end">12월</text>
+        </svg>
+        <div class="trend-caption">예시: 2026년 1~12월 월별 평균 Y(잔존율), 91.55%~92.43% 범위에서 등락. 아직 SPEC 하한 아래로는 내려가지 않음(월 평균 기준).</div>
+      </div>
+
+      <!-- Yearly view -->
+      <div class="trend-view" data-period="yearly">
+        <div class="empty-year-note">
+          <span style="font-size:1.5rem;">📅</span>
+          <div><b>연간 추이는 최소 2개 연도 데이터가 쌓여야 표시됩니다.</b></div>
+          <div>현재 누적 데이터는 2026년 1개 연도뿐입니다 (2026년 평균 Y: 92.03%, 예시). 2027년 데이터가 쌓이면 연도별 비교 그래프가 여기에 나타납니다.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <details class="evidence-toggle">
+    <summary>
+      형명 35개 전체 표로 보기
+      <span class="summary-sub">형명(모델명)을 클릭하면 로트별 raw data 팝업</span>
+    </summary>
+    <div class="evidence-toggle-body">
+  <div class="card">
+    <div class="card-head">
+      <h3>형명별 X 인자 평균 · Y · Z 한눈에 보기</h3>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--sebang-green-100);"></span>SPEC 이상(양품)</span>
+        <span><span class="sw" style="background:var(--sebang-orange-100);"></span>SPEC 미달(부적합)</span>
+        <span><span class="sw" style="background:var(--sebang-gray-100);"></span>시험 미실시</span>
+      </div>
+    </div>
+    <div class="modal-note">🖱️ <b>형명(모델명)을 클릭하면</b> 해당 형명에 속한 로트별 RAW DATA(공정 실측값·시험 실측값)가 팝업으로 열립니다. 이 표에 보이는 값은 형명 평균이며, 팝업에서는 로트 하나하나의 원본 수치를 확인할 수 있습니다.</div>
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>형명 (모델)</th>
+          <th>로트수(공정/시험)</th>
+          <th>전해액온도(℃)</th>
+          <th>수조온도(℃)</th>
+          <th>충전율(%)</th>
+          <th>셀중량σ(g)</th>
+          <th>Y 포화도(%)</th>
+          <th>Y 판정</th>
+          <th>Z capacity_rate(%)</th>
+          <th>Z 판정</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="group-row"><td colspan="10">50Ah 그룹 — 6개 형명 · 평균 Y 91.80% · 평균 Z 97.49%</td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM50_H1')">AGM50_H1</td><td class="x-val">3 / 3</td><td class="x-val">32.27</td><td class="x-val">38.60</td><td class="x-val">114.60</td><td class="x-val">0.05</td><td class="y-val">91.38</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td><td class="z-val">96.07</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM50_H3')">AGM50_H3</td><td class="x-val">5 / 3</td><td class="x-val">35.18</td><td class="x-val">37.08</td><td class="x-val">114.68</td><td class="x-val">0.06</td><td class="y-val">91.98</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">99.60</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM50_K1')">AGM50_K1</td><td class="x-val">2 / 2</td><td class="x-val">32.05</td><td class="x-val">37.10</td><td class="x-val">116.70</td><td class="x-val">0.06</td><td class="y-val">91.50</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">96.10</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM50_K3')">AGM50_K3</td><td class="x-val">2 / 0</td><td class="x-val">35.65</td><td class="x-val">38.65</td><td class="x-val">110.90</td><td class="x-val">0.03</td><td class="y-val">91.65</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">—</td><td><span class="judge-pill untested"><span class="dot"></span>미시험</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM50_S1')">AGM50_S1</td><td class="x-val">3 / 2</td><td class="x-val">35.13</td><td class="x-val">36.50</td><td class="x-val">118.00</td><td class="x-val">0.06</td><td class="y-val">91.79</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">98.20</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM50_S3')">AGM50_S3</td><td class="x-val">1 / 0</td><td class="x-val">36.30</td><td class="x-val">38.90</td><td class="x-val">113.20</td><td class="x-val">0.06</td><td class="y-val">92.51</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">—</td><td><span class="judge-pill untested"><span class="dot"></span>미시험</span></td></tr>
+
+        <tr class="group-row"><td colspan="10">60Ah 그룹 — 6개 형명 · 평균 Y 92.08% · 평균 Z 98.36%</td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM60_H1')">AGM60_H1</td><td class="x-val">2 / 1</td><td class="x-val">36.10</td><td class="x-val">35.95</td><td class="x-val">109.00</td><td class="x-val">0.06</td><td class="y-val">90.93</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td><td class="z-val">99.40</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM60_H3')">AGM60_H3</td><td class="x-val">1 / 0</td><td class="x-val">34.20</td><td class="x-val">43.30</td><td class="x-val">119.17</td><td class="x-val">0.07</td><td class="y-val">92.85</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">—</td><td><span class="judge-pill untested"><span class="dot"></span>미시험</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM60_K1')">AGM60_K1</td><td class="x-val">3 / 1</td><td class="x-val">35.40</td><td class="x-val">37.50</td><td class="x-val">114.94</td><td class="x-val">0.07</td><td class="y-val">92.67</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">100.00</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM60_K3')">AGM60_K3</td><td class="x-val">2 / 1</td><td class="x-val">31.65</td><td class="x-val">33.35</td><td class="x-val">115.42</td><td class="x-val">0.06</td><td class="y-val">92.37</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">93.70</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM60_S1')">AGM60_S1</td><td class="x-val">1 / 1</td><td class="x-val">34.40</td><td class="x-val">41.50</td><td class="x-val">120.00</td><td class="x-val">0.04</td><td class="y-val">91.48</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td><td class="z-val">99.60</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM60_S3')">AGM60_S3</td><td class="x-val">3 / 1</td><td class="x-val">33.97</td><td class="x-val">38.53</td><td class="x-val">116.11</td><td class="x-val">0.04</td><td class="y-val">92.18</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">99.10</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+
+        <tr class="group-row"><td colspan="10">70Ah 그룹 — 6개 형명 · 평균 Y 92.28% · 평균 Z 97.42%</td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM70_H1')">AGM70_H1</td><td class="x-val">5 / 5</td><td class="x-val">33.92</td><td class="x-val">36.60</td><td class="x-val">112.49</td><td class="x-val">0.07</td><td class="y-val">92.46</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">95.34</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM70_H3')">AGM70_H3</td><td class="x-val">2 / 1</td><td class="x-val">35.85</td><td class="x-val">36.95</td><td class="x-val">116.00</td><td class="x-val">0.06</td><td class="y-val">92.18</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">95.60</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM70_K1')">AGM70_K1</td><td class="x-val">3 / 1</td><td class="x-val">33.10</td><td class="x-val">36.77</td><td class="x-val">112.14</td><td class="x-val">0.06</td><td class="y-val">91.94</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">98.70</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM70_K3')">AGM70_K3</td><td class="x-val">2 / 1</td><td class="x-val">35.90</td><td class="x-val">36.25</td><td class="x-val">117.07</td><td class="x-val">0.05</td><td class="y-val">91.31</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td><td class="z-val">98.70</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM70_S1')">AGM70_S1</td><td class="x-val">2 / 2</td><td class="x-val">34.85</td><td class="x-val">38.05</td><td class="x-val">117.57</td><td class="x-val">0.05</td><td class="y-val">92.85</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">99.45</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM70_S3')">AGM70_S3</td><td class="x-val">4 / 1</td><td class="x-val">35.12</td><td class="x-val">37.42</td><td class="x-val">117.07</td><td class="x-val">0.05</td><td class="y-val">92.91</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">96.70</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+
+        <tr class="group-row"><td colspan="10">80Ah 그룹 — 6개 형명 · 평균 Y 91.90% · 평균 Z 98.44%</td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM80_H1')">AGM80_H1</td><td class="x-val">1 / 0</td><td class="x-val">32.50</td><td class="x-val">37.10</td><td class="x-val">116.62</td><td class="x-val">0.08</td><td class="y-val">92.02</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">—</td><td><span class="judge-pill untested"><span class="dot"></span>미시험</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM80_H3')">AGM80_H3</td><td class="x-val">1 / 0</td><td class="x-val">33.90</td><td class="x-val">35.80</td><td class="x-val">113.50</td><td class="x-val">0.09</td><td class="y-val">90.11</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td><td class="z-val">—</td><td><span class="judge-pill untested"><span class="dot"></span>미시험</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM80_K1')">AGM80_K1</td><td class="x-val">2 / 0</td><td class="x-val">35.05</td><td class="x-val">39.40</td><td class="x-val">114.69</td><td class="x-val">0.09</td><td class="y-val">91.86</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">—</td><td><span class="judge-pill untested"><span class="dot"></span>미시험</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM80_K3')">AGM80_K3</td><td class="x-val">1 / 1</td><td class="x-val">36.20</td><td class="x-val">38.70</td><td class="x-val">114.12</td><td class="x-val">0.06</td><td class="y-val">91.76</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">101.20</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM80_S1')">AGM80_S1</td><td class="x-val">4 / 3</td><td class="x-val">34.58</td><td class="x-val">37.02</td><td class="x-val">114.78</td><td class="x-val">0.09</td><td class="y-val">92.44</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">97.83</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM80_S3')">AGM80_S3</td><td class="x-val">5 / 2</td><td class="x-val">33.68</td><td class="x-val">39.00</td><td class="x-val">114.40</td><td class="x-val">0.09</td><td class="y-val">93.19</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">96.30</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+
+        <tr class="group-row"><td colspan="10">90Ah 그룹 — 6개 형명 · 평균 Y 91.94% · 평균 Z 98.06%</td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM90_H1')">AGM90_H1</td><td class="x-val">2 / 2</td><td class="x-val">34.35</td><td class="x-val">39.85</td><td class="x-val">117.83</td><td class="x-val">0.11</td><td class="y-val">92.36</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">98.90</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM90_H3')">AGM90_H3</td><td class="x-val">4 / 3</td><td class="x-val">36.05</td><td class="x-val">39.15</td><td class="x-val">114.89</td><td class="x-val">0.08</td><td class="y-val">92.09</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">99.00</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM90_K1')">AGM90_K1</td><td class="x-val">4 / 3</td><td class="x-val">35.45</td><td class="x-val">37.85</td><td class="x-val">113.67</td><td class="x-val">0.07</td><td class="y-val">91.79</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">97.93</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM90_K3')">AGM90_K3</td><td class="x-val">5 / 5</td><td class="x-val">33.68</td><td class="x-val">39.70</td><td class="x-val">113.33</td><td class="x-val">0.07</td><td class="y-val">92.17</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">96.36</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM90_S1')">AGM90_S1</td><td class="x-val">2 / 2</td><td class="x-val">36.75</td><td class="x-val">38.00</td><td class="x-val">116.22</td><td class="x-val">0.09</td><td class="y-val">91.83</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">99.15</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM90_S3')">AGM90_S3</td><td class="x-val">6 / 4</td><td class="x-val">34.92</td><td class="x-val">38.58</td><td class="x-val">115.26</td><td class="x-val">0.09</td><td class="y-val">91.40</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td><td class="z-val">97.02</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+
+        <tr class="group-row"><td colspan="10">105Ah 그룹 — 5개 형명 · 평균 Y 91.83% · 평균 Z 98.37%</td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM105_H1')">AGM105_H1</td><td class="x-val">3 / 1</td><td class="x-val">33.70</td><td class="x-val">37.47</td><td class="x-val">114.98</td><td class="x-val">0.07</td><td class="y-val">91.49</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td><td class="z-val">95.60</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM105_H3')">AGM105_H3</td><td class="x-val">2 / 1</td><td class="x-val">36.60</td><td class="x-val">41.05</td><td class="x-val">117.19</td><td class="x-val">0.08</td><td class="y-val">91.22</td><td><span class="judge-pill fail"><span class="dot"></span>FAIL</span></td><td class="z-val">99.50</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM105_K1')">AGM105_K1</td><td class="x-val">2 / 0</td><td class="x-val">34.30</td><td class="x-val">35.85</td><td class="x-val">115.10</td><td class="x-val">0.07</td><td class="y-val">92.82</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">—</td><td><span class="judge-pill untested"><span class="dot"></span>미시험</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM105_S1')">AGM105_S1</td><td class="x-val">3 / 2</td><td class="x-val">35.87</td><td class="x-val">42.17</td><td class="x-val">117.21</td><td class="x-val">0.10</td><td class="y-val">91.76</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">100.65</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+        <tr><td class="model-name clickable-model" onclick="openRawData('AGM105_S3')">AGM105_S3</td><td class="x-val">7 / 4</td><td class="x-val">36.66</td><td class="x-val">36.97</td><td class="x-val">115.73</td><td class="x-val">0.09</td><td class="y-val">91.88</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td><td class="z-val">97.72</td><td><span class="judge-pill pass"><span class="dot"></span>PASS</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+    </div>
+  </details>
+
+  <div class="foot-note">
+    형명별 평균값·SPEC 판정(Y 91.5% / Z 96.0% 예시 기준)과 추이 그래프는 더미 데이터로 계산한 예시이며 실제 SPEC 기준이 아닙니다. "미시험"은 이번 달 해당 형명에 대한 시험 데이터가 없다는 뜻으로 부적합이 아닙니다. 형명 간 비교는 항상 무차원화된 인자(충전율 등) 기준으로 해야 모델 크기 효과를 배제할 수 있습니다.
+    업로드된 공정·시험 데이터는 덮어쓰지 않고 계속 누적 저장되며, 추이 그래프는 이 누적 이력(prod_date 기준)을 집계한 것입니다.
+  </div>
+</div>
+
+<div class="modal-overlay" id="rawDataModal" onclick="if(event.target===this) closeRawData()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <h3 id="rawDataTitle">형명 RAW DATA</h3>
+        <div class="hint" id="rawDataSubtitle"></div>
+      </div>
+      <button class="modal-close" onclick="closeRawData()" aria-label="닫기">✕</button>
+    </div>
+    <div class="modal-body" id="rawDataBody"></div>
+  </div>
+</div>
+
+<script>
+  // 형명별 로트 RAW DATA (process_data.csv × test_data.csv를 lot_id로 매칭해 생성한 더미 원본값)
+  const RAW_DATA_BY_MODEL = {"AGM105_S1": [{"lot_id": "105C26A016250954S3", "prod_date": "2026-01-01", "electrolyte_temp": "36.9", "tank_temp": "39.7", "charge_amount": "124.3", "fill_weight": "9337.0", "water_loss": "765.0", "aging_days": "7", "soaking_time_sec": "86", "cell_weight_sd": 0.097, "tested": false}, {"lot_id": "105C26B144662059S3", "prod_date": "2026-02-14", "electrolyte_temp": "38.8", "tank_temp": "46.4", "charge_amount": "124.6", "fill_weight": "9018.0", "water_loss": "801.0", "aging_days": "6", "soaking_time_sec": "71", "cell_weight_sd": 0.117, "tested": true, "capacity_rate": "101.9", "charge_rate": "105.3", "mt_voltage": "12.59", "mt_current": "8275.0", "rated_capacity": "105.0"}, {"lot_id": "105C26G079133547S3", "prod_date": "2026-07-07", "electrolyte_temp": "31.9", "tank_temp": "40.4", "charge_amount": "120.3", "fill_weight": "9228.0", "water_loss": "706.0", "aging_days": "9", "soaking_time_sec": "75", "cell_weight_sd": 0.057, "tested": true, "capacity_rate": "99.4", "charge_rate": "95.7", "mt_voltage": "12.57", "mt_current": "10750.0", "rated_capacity": "105.0"}], "AGM80_S3": [{"lot_id": "080C26B027756856S1", "prod_date": "2026-02-02", "electrolyte_temp": "33.1", "tank_temp": "37.6", "charge_amount": "92.5", "fill_weight": "6906.0", "water_loss": "495.0", "aging_days": "5", "soaking_time_sec": "71", "cell_weight_sd": 0.106, "tested": false}, {"lot_id": "080C26B101316158S3", "prod_date": "2026-02-10", "electrolyte_temp": "32.5", "tank_temp": "38.8", "charge_amount": "90.8", "fill_weight": "6766.0", "water_loss": "401.0", "aging_days": "5", "soaking_time_sec": "85", "cell_weight_sd": 0.07, "tested": true, "capacity_rate": "96.7", "charge_rate": "100.1", "mt_voltage": "12.32", "mt_current": "7095.0", "rated_capacity": "80.0"}, {"lot_id": "080C26D169383411S2", "prod_date": "2026-04-16", "electrolyte_temp": "40.2", "tank_temp": "40.5", "charge_amount": "95.4", "fill_weight": "6612.0", "water_loss": "393.0", "aging_days": "6", "soaking_time_sec": "76", "cell_weight_sd": 0.082, "tested": false}, {"lot_id": "080C26H046764501S1", "prod_date": "2026-08-04", "electrolyte_temp": "30.7", "tank_temp": "38.5", "charge_amount": "89.5", "fill_weight": "6569.0", "water_loss": "515.0", "aging_days": "5", "soaking_time_sec": "81", "cell_weight_sd": 0.07, "tested": false}, {"lot_id": "080C26I212675992S3", "prod_date": "2026-09-21", "electrolyte_temp": "31.9", "tank_temp": "39.6", "charge_amount": "89.4", "fill_weight": "6479.0", "water_loss": "465.0", "aging_days": "9", "soaking_time_sec": "79", "cell_weight_sd": 0.07, "tested": true, "capacity_rate": "95.9", "charge_rate": "97.7", "mt_voltage": "12.69", "mt_current": "8032.0", "rated_capacity": "80.0"}], "AGM50_H3": [{"lot_id": "050C26B180687153H2", "prod_date": "2026-02-18", "electrolyte_temp": "36.7", "tank_temp": "40.3", "charge_amount": "59.4", "fill_weight": "4365.0", "water_loss": "315.0", "aging_days": "8", "soaking_time_sec": "70", "cell_weight_sd": 0.044, "tested": false}, {"lot_id": "050C26C033001662H3", "prod_date": "2026-03-03", "electrolyte_temp": "32.4", "tank_temp": "33.7", "charge_amount": "55.2", "fill_weight": "4339.0", "water_loss": "331.0", "aging_days": "7", "soaking_time_sec": "81", "cell_weight_sd": 0.053, "tested": true, "capacity_rate": "95.8", "charge_rate": "100.6", "mt_voltage": "12.56", "mt_current": "4466.0", "rated_capacity": "50.0"}, {"lot_id": "050C26C077258493H1", "prod_date": "2026-03-07", "electrolyte_temp": "36.0", "tank_temp": "38.2", "charge_amount": "56.0", "fill_weight": "4356.0", "water_loss": "397.0", "aging_days": "5", "soaking_time_sec": "80", "cell_weight_sd": 0.061, "tested": false}, {"lot_id": "050C26F265902909H3", "prod_date": "2026-06-26", "electrolyte_temp": "35.6", "tank_temp": "35.3", "charge_amount": "57.9", "fill_weight": "4308.0", "water_loss": "365.0", "aging_days": "9", "soaking_time_sec": "67", "cell_weight_sd": 0.048, "tested": true, "capacity_rate": "102.1", "charge_rate": "93.4", "mt_voltage": "12.53", "mt_current": "4437.0", "rated_capacity": "50.0"}, {"lot_id": "050C26H129520393H2", "prod_date": "2026-08-12", "electrolyte_temp": "35.2", "tank_temp": "37.9", "charge_amount": "58.2", "fill_weight": "4384.0", "water_loss": "336.0", "aging_days": "8", "soaking_time_sec": "66", "cell_weight_sd": 0.045, "tested": true, "capacity_rate": "100.9", "charge_rate": "100.2", "mt_voltage": "12.69", "mt_current": "4161.0", "rated_capacity": "50.0"}], "AGM105_K1": [{"lot_id": "105C26D040052653K3", "prod_date": "2026-04-04", "electrolyte_temp": "34.5", "tank_temp": "34.9", "charge_amount": "120.5", "fill_weight": "8350.0", "water_loss": "569.0", "aging_days": "5", "soaking_time_sec": "73", "cell_weight_sd": 0.059, "tested": false}, {"lot_id": "105C26I011510622K3", "prod_date": "2026-09-01", "electrolyte_temp": "34.1", "tank_temp": "36.8", "charge_amount": "121.2", "fill_weight": "8877.0", "water_loss": "669.0", "aging_days": "5", "soaking_time_sec": "81", "cell_weight_sd": 0.061, "tested": false}], "AGM50_H1": [{"lot_id": "050C26B141660111H3", "prod_date": "2026-02-14", "electrolyte_temp": "31.3", "tank_temp": "39.6", "charge_amount": "55.3", "fill_weight": "4121.0", "water_loss": "332.0", "aging_days": "6", "soaking_time_sec": "65", "cell_weight_sd": 0.04, "tested": true, "capacity_rate": "95.0", "charge_rate": "101.9", "mt_voltage": "12.5", "mt_current": "4525.0", "rated_capacity": "50.0"}, {"lot_id": "050C26E057970693H2", "prod_date": "2026-05-05", "electrolyte_temp": "32.9", "tank_temp": "37.7", "charge_amount": "57.1", "fill_weight": "4198.0", "water_loss": "393.0", "aging_days": "9", "soaking_time_sec": "74", "cell_weight_sd": 0.04, "tested": true, "capacity_rate": "94.4", "charge_rate": "93.3", "mt_voltage": "12.31", "mt_current": "4775.0", "rated_capacity": "50.0"}, {"lot_id": "050C26L086717650H1", "prod_date": "2026-12-08", "electrolyte_temp": "32.6", "tank_temp": "38.5", "charge_amount": "59.5", "fill_weight": "4241.0", "water_loss": "358.0", "aging_days": "9", "soaking_time_sec": "75", "cell_weight_sd": 0.055, "tested": true, "capacity_rate": "98.8", "charge_rate": "103.0", "mt_voltage": "12.65", "mt_current": "4406.0", "rated_capacity": "50.0"}], "AGM90_K1": [{"lot_id": "090C26C156292261K2", "prod_date": "2026-03-15", "electrolyte_temp": "34.6", "tank_temp": "39.2", "charge_amount": "101.4", "fill_weight": "7560.0", "water_loss": "694.0", "aging_days": "9", "soaking_time_sec": "75", "cell_weight_sd": 0.061, "tested": true, "capacity_rate": "95.3", "charge_rate": "106.0", "mt_voltage": "12.38", "mt_current": "8130.0", "rated_capacity": "90.0"}, {"lot_id": "090C26F063030323K1", "prod_date": "2026-06-06", "electrolyte_temp": "35.3", "tank_temp": "37.6", "charge_amount": "100.1", "fill_weight": "6990.0", "water_loss": "610.0", "aging_days": "9", "soaking_time_sec": "74", "cell_weight_sd": 0.048, "tested": false}, {"lot_id": "090C26G193695362K1", "prod_date": "2026-07-19", "electrolyte_temp": "35.0", "tank_temp": "36.9", "charge_amount": "102.5", "fill_weight": "7151.0", "water_loss": "526.0", "aging_days": "8", "soaking_time_sec": "91", "cell_weight_sd": 0.074, "tested": true, "capacity_rate": "99.0", "charge_rate": "101.3", "mt_voltage": "12.91", "mt_current": "9072.0", "rated_capacity": "90.0"}, {"lot_id": "090C26J106221791K3", "prod_date": "2026-10-10", "electrolyte_temp": "36.9", "tank_temp": "37.7", "charge_amount": "105.2", "fill_weight": "7331.0", "water_loss": "556.0", "aging_days": "7", "soaking_time_sec": "74", "cell_weight_sd": 0.087, "tested": true, "capacity_rate": "99.5", "charge_rate": "94.6", "mt_voltage": "12.71", "mt_current": "8177.0", "rated_capacity": "90.0"}], "AGM90_S3": [{"lot_id": "090C26B220303502S1", "prod_date": "2026-02-22", "electrolyte_temp": "32.6", "tank_temp": "38.6", "charge_amount": "100.3", "fill_weight": "7352.0", "water_loss": "698.0", "aging_days": "8", "soaking_time_sec": "60", "cell_weight_sd": 0.122, "tested": true, "capacity_rate": "93.3", "charge_rate": "102.8", "mt_voltage": "12.52", "mt_current": "8180.0", "rated_capacity": "90.0"}, {"lot_id": "090C26G072548695S2", "prod_date": "2026-07-07", "electrolyte_temp": "32.2", "tank_temp": "37.3", "charge_amount": "105.5", "fill_weight": "7225.0", "water_loss": "712.0", "aging_days": "7", "soaking_time_sec": "75", "cell_weight_sd": 0.093, "tested": true, "capacity_rate": "97.7", "charge_rate": "93.5", "mt_voltage": "12.42", "mt_current": "8329.0", "rated_capacity": "90.0"}, {"lot_id": "090C26H088776912S2", "prod_date": "2026-08-08", "electrolyte_temp": "34.0", "tank_temp": "42.5", "charge_amount": "105.3", "fill_weight": "7954.0", "water_loss": "740.0", "aging_days": "8", "soaking_time_sec": "81", "cell_weight_sd": 0.087, "tested": false}, {"lot_id": "090C26J180380572S3", "prod_date": "2026-10-18", "electrolyte_temp": "36.1", "tank_temp": "37.1", "charge_amount": "100.6", "fill_weight": "7527.0", "water_loss": "571.0", "aging_days": "5", "soaking_time_sec": "72", "cell_weight_sd": 0.058, "tested": true, "capacity_rate": "97.4", "charge_rate": "101.7", "mt_voltage": "12.28", "mt_current": "8324.0", "rated_capacity": "90.0"}, {"lot_id": "090C26K276037789S2", "prod_date": "2026-11-27", "electrolyte_temp": "38.1", "tank_temp": "38.1", "charge_amount": "106.0", "fill_weight": "7424.0", "water_loss": "587.0", "aging_days": "6", "soaking_time_sec": "80", "cell_weight_sd": 0.064, "tested": false}, {"lot_id": "090C26L164266494S3", "prod_date": "2026-12-16", "electrolyte_temp": "36.5", "tank_temp": "37.9", "charge_amount": "104.7", "fill_weight": "7903.0", "water_loss": "589.0", "aging_days": "8", "soaking_time_sec": "69", "cell_weight_sd": 0.075, "tested": true, "capacity_rate": "99.7", "charge_rate": "101.4", "mt_voltage": "12.73", "mt_current": "8146.0", "rated_capacity": "90.0"}], "AGM70_K3": [{"lot_id": "070C26C119449480K3", "prod_date": "2026-03-11", "electrolyte_temp": "35.7", "tank_temp": "37.3", "charge_amount": "81.1", "fill_weight": "5825.0", "water_loss": "516.0", "aging_days": "6", "soaking_time_sec": "66", "cell_weight_sd": 0.047, "tested": true, "capacity_rate": "98.7", "charge_rate": "100.0", "mt_voltage": "12.26", "mt_current": "6448.0", "rated_capacity": "70.0"}, {"lot_id": "070C26H085045482K2", "prod_date": "2026-08-08", "electrolyte_temp": "36.1", "tank_temp": "35.2", "charge_amount": "82.8", "fill_weight": "5912.0", "water_loss": "504.0", "aging_days": "6", "soaking_time_sec": "84", "cell_weight_sd": 0.046, "tested": false}], "AGM80_S1": [{"lot_id": "080C26E131924634S3", "prod_date": "2026-05-13", "electrolyte_temp": "34.3", "tank_temp": "37.3", "charge_amount": "89.0", "fill_weight": "6622.0", "water_loss": "529.0", "aging_days": "6", "soaking_time_sec": "64", "cell_weight_sd": 0.072, "tested": true, "capacity_rate": "94.4", "charge_rate": "98.5", "mt_voltage": "12.64", "mt_current": "7204.0", "rated_capacity": "80.0"}, {"lot_id": "080C26H287652473S3", "prod_date": "2026-08-28", "electrolyte_temp": "33.5", "tank_temp": "37.1", "charge_amount": "94.0", "fill_weight": "6653.0", "water_loss": "369.0", "aging_days": "6", "soaking_time_sec": "67", "cell_weight_sd": 0.031, "tested": true, "capacity_rate": "99.0", "charge_rate": "100.3", "mt_voltage": "12.44", "mt_current": "6184.0", "rated_capacity": "80.0"}, {"lot_id": "080C26I099955001S3", "prod_date": "2026-09-09", "electrolyte_temp": "35.9", "tank_temp": "34.2", "charge_amount": "91.8", "fill_weight": "6730.0", "water_loss": "630.0", "aging_days": "8", "soaking_time_sec": "76", "cell_weight_sd": 0.118, "tested": false}, {"lot_id": "080C26K194677301S2", "prod_date": "2026-11-19", "electrolyte_temp": "34.6", "tank_temp": "39.5", "charge_amount": "92.5", "fill_weight": "6945.0", "water_loss": "509.0", "aging_days": "9", "soaking_time_sec": "69", "cell_weight_sd": 0.098, "tested": true, "capacity_rate": "100.1", "charge_rate": "103.2", "mt_voltage": "12.55", "mt_current": "7000.0", "rated_capacity": "80.0"}], "AGM70_S3": [{"lot_id": "070C26B067930235S2", "prod_date": "2026-02-06", "electrolyte_temp": "32.3", "tank_temp": "36.4", "charge_amount": "78.6", "fill_weight": "5707.0", "water_loss": "395.0", "aging_days": "8", "soaking_time_sec": "63", "cell_weight_sd": 0.062, "tested": true, "capacity_rate": "96.7", "charge_rate": "95.0", "mt_voltage": "12.75", "mt_current": "6631.0", "rated_capacity": "70.0"}, {"lot_id": "070C26G158840568S2", "prod_date": "2026-07-15", "electrolyte_temp": "33.1", "tank_temp": "38.6", "charge_amount": "83.0", "fill_weight": "5656.0", "water_loss": "389.0", "aging_days": "7", "soaking_time_sec": "74", "cell_weight_sd": 0.04, "tested": false}, {"lot_id": "070C26K079678279S1", "prod_date": "2026-11-07", "electrolyte_temp": "38.7", "tank_temp": "40.1", "charge_amount": "84.1", "fill_weight": "5945.0", "water_loss": "361.0", "aging_days": "6", "soaking_time_sec": "72", "cell_weight_sd": 0.054, "tested": false}, {"lot_id": "070C26K112153086S1", "prod_date": "2026-11-11", "electrolyte_temp": "36.4", "tank_temp": "34.6", "charge_amount": "82.1", "fill_weight": "5827.0", "water_loss": "495.0", "aging_days": "8", "soaking_time_sec": "73", "cell_weight_sd": 0.022, "tested": false}], "AGM105_H1": [{"lot_id": "105C26E170117940H1", "prod_date": "2026-05-17", "electrolyte_temp": "28.6", "tank_temp": "34.1", "charge_amount": "118.3", "fill_weight": "8784.0", "water_loss": "753.0", "aging_days": "8", "soaking_time_sec": "74", "cell_weight_sd": 0.045, "tested": false}, {"lot_id": "105C26G113400680H1", "prod_date": "2026-07-11", "electrolyte_temp": "33.2", "tank_temp": "37.2", "charge_amount": "119.5", "fill_weight": "8717.0", "water_loss": "615.0", "aging_days": "5", "soaking_time_sec": "85", "cell_weight_sd": 0.044, "tested": true, "capacity_rate": "95.6", "charge_rate": "92.8", "mt_voltage": "12.71", "mt_current": "9439.0", "rated_capacity": "105.0"}, {"lot_id": "105C26L126125395H1", "prod_date": "2026-12-12", "electrolyte_temp": "39.3", "tank_temp": "41.1", "charge_amount": "124.4", "fill_weight": "9226.0", "water_loss": "913.0", "aging_days": "6", "soaking_time_sec": "78", "cell_weight_sd": 0.09, "tested": false}], "AGM70_H1": [{"lot_id": "070C26A013066594H3", "prod_date": "2026-01-01", "electrolyte_temp": "32.2", "tank_temp": "35.7", "charge_amount": "78.0", "fill_weight": "5998.0", "water_loss": "386.0", "aging_days": "7", "soaking_time_sec": "72", "cell_weight_sd": 0.06, "tested": true, "capacity_rate": "93.2", "charge_rate": "94.3", "mt_voltage": "12.6", "mt_current": "6224.0", "rated_capacity": "70.0"}, {"lot_id": "070C26A098740769H2", "prod_date": "2026-01-09", "electrolyte_temp": "31.8", "tank_temp": "35.8", "charge_amount": "77.9", "fill_weight": "5936.0", "water_loss": "624.0", "aging_days": "7", "soaking_time_sec": "82", "cell_weight_sd": 0.089, "tested": true, "capacity_rate": "93.1", "charge_rate": "99.8", "mt_voltage": "12.55", "mt_current": "5965.0", "rated_capacity": "70.0"}, {"lot_id": "070C26A130356802H2", "prod_date": "2026-01-13", "electrolyte_temp": "37.6", "tank_temp": "42.0", "charge_amount": "80.5", "fill_weight": "6069.0", "water_loss": "393.0", "aging_days": "6", "soaking_time_sec": "68", "cell_weight_sd": 0.075, "tested": true, "capacity_rate": "101.1", "charge_rate": "100.3", "mt_voltage": "12.35", "mt_current": "7012.0", "rated_capacity": "70.0"}, {"lot_id": "070C26C036352261H1", "prod_date": "2026-03-03", "electrolyte_temp": "31.6", "tank_temp": "35.1", "charge_amount": "79.0", "fill_weight": "5825.0", "water_loss": "433.0", "aging_days": "8", "soaking_time_sec": "68", "cell_weight_sd": 0.057, "tested": true, "capacity_rate": "93.9", "charge_rate": "98.9", "mt_voltage": "12.71", "mt_current": "6193.0", "rated_capacity": "70.0"}, {"lot_id": "070C26C239671481H2", "prod_date": "2026-03-23", "electrolyte_temp": "36.4", "tank_temp": "34.4", "charge_amount": "78.3", "fill_weight": "5997.0", "water_loss": "409.0", "aging_days": "5", "soaking_time_sec": "74", "cell_weight_sd": 0.058, "tested": true, "capacity_rate": "95.4", "charge_rate": "100.4", "mt_voltage": "12.58", "mt_current": "6973.0", "rated_capacity": "70.0"}], "AGM60_K1": [{"lot_id": "060C26D164968733K1", "prod_date": "2026-04-16", "electrolyte_temp": "37.4", "tank_temp": "35.7", "charge_amount": "66.7", "fill_weight": "4819.0", "water_loss": "402.0", "aging_days": "7", "soaking_time_sec": "70", "cell_weight_sd": 0.074, "tested": false}, {"lot_id": "060C26J100302888K1", "prod_date": "2026-10-10", "electrolyte_temp": "34.6", "tank_temp": "39.4", "charge_amount": "69.6", "fill_weight": "4902.0", "water_loss": "365.0", "aging_days": "8", "soaking_time_sec": "90", "cell_weight_sd": 0.063, "tested": true, "capacity_rate": "100.0", "charge_rate": "100.2", "mt_voltage": "12.7", "mt_current": "5665.0", "rated_capacity": "60.0"}, {"lot_id": "060C26L285946848K2", "prod_date": "2026-12-28", "electrolyte_temp": "34.2", "tank_temp": "37.4", "charge_amount": "70.6", "fill_weight": "4851.0", "water_loss": "301.0", "aging_days": "6", "soaking_time_sec": "82", "cell_weight_sd": 0.061, "tested": false}], "AGM105_S3": [{"lot_id": "105C26A050142711S2", "prod_date": "2026-01-05", "electrolyte_temp": "42.4", "tank_temp": "40.5", "charge_amount": "122.7", "fill_weight": "9069.0", "water_loss": "588.0", "aging_days": "8", "soaking_time_sec": "73", "cell_weight_sd": 0.045, "tested": true, "capacity_rate": "102.2", "charge_rate": "101.6", "mt_voltage": "12.43", "mt_current": "8850.0", "rated_capacity": "105.0"}, {"lot_id": "105C26F067299891S1", "prod_date": "2026-06-06", "electrolyte_temp": "33.7", "tank_temp": "36.8", "charge_amount": "118.7", "fill_weight": "8742.0", "water_loss": "738.0", "aging_days": "5", "soaking_time_sec": "66", "cell_weight_sd": 0.095, "tested": true, "capacity_rate": "96.2", "charge_rate": "95.0", "mt_voltage": "12.61", "mt_current": "9646.0", "rated_capacity": "105.0"}, {"lot_id": "105C26F186920320S1", "prod_date": "2026-06-18", "electrolyte_temp": "37.3", "tank_temp": "29.2", "charge_amount": "120.2", "fill_weight": "8939.0", "water_loss": "789.0", "aging_days": "8", "soaking_time_sec": "70", "cell_weight_sd": 0.077, "tested": false}, {"lot_id": "105C26G273554137S2", "prod_date": "2026-07-27", "electrolyte_temp": "37.2", "tank_temp": "35.9", "charge_amount": "123.2", "fill_weight": "9047.0", "water_loss": "674.0", "aging_days": "6", "soaking_time_sec": "74", "cell_weight_sd": 0.059, "tested": false}, {"lot_id": "105C26J145211660S3", "prod_date": "2026-10-14", "electrolyte_temp": "31.3", "tank_temp": "38.5", "charge_amount": "121.0", "fill_weight": "8995.0", "water_loss": "763.0", "aging_days": "7", "soaking_time_sec": "87", "cell_weight_sd": 0.12, "tested": true, "capacity_rate": "98.2", "charge_rate": "98.7", "mt_voltage": "12.74", "mt_current": "10159.0", "rated_capacity": "105.0"}, {"lot_id": "105C26L044189036S3", "prod_date": "2026-12-04", "electrolyte_temp": "37.9", "tank_temp": "38.7", "charge_amount": "124.4", "fill_weight": "9278.0", "water_loss": "814.0", "aging_days": "5", "soaking_time_sec": "78", "cell_weight_sd": 0.078, "tested": false}, {"lot_id": "105C26L121875033S2", "prod_date": "2026-12-12", "electrolyte_temp": "36.8", "tank_temp": "39.2", "charge_amount": "120.4", "fill_weight": "8594.0", "water_loss": "718.0", "aging_days": "6", "soaking_time_sec": "71", "cell_weight_sd": 0.093, "tested": true, "capacity_rate": "94.3", "charge_rate": "98.5", "mt_voltage": "12.61", "mt_current": "8721.0", "rated_capacity": "105.0"}], "AGM80_K3": [{"lot_id": "080C26H208300476K1", "prod_date": "2026-08-20", "electrolyte_temp": "36.2", "tank_temp": "38.7", "charge_amount": "91.3", "fill_weight": "6701.0", "water_loss": "552.0", "aging_days": "5", "soaking_time_sec": "86", "cell_weight_sd": 0.059, "tested": true, "capacity_rate": "101.2", "charge_rate": "103.0", "mt_voltage": "12.68", "mt_current": "7051.0", "rated_capacity": "80.0"}], "AGM60_S3": [{"lot_id": "060C26D081985211S2", "prod_date": "2026-04-08", "electrolyte_temp": "35.1", "tank_temp": "35.9", "charge_amount": "67.5", "fill_weight": "4983.0", "water_loss": "396.0", "aging_days": "5", "soaking_time_sec": "77", "cell_weight_sd": 0.056, "tested": false}, {"lot_id": "060C26F109481239S2", "prod_date": "2026-06-10", "electrolyte_temp": "35.0", "tank_temp": "39.8", "charge_amount": "69.8", "fill_weight": "4841.0", "water_loss": "406.0", "aging_days": "5", "soaking_time_sec": "83", "cell_weight_sd": 0.032, "tested": false}, {"lot_id": "060C26J225097907S3", "prod_date": "2026-10-22", "electrolyte_temp": "31.8", "tank_temp": "39.9", "charge_amount": "71.7", "fill_weight": "5020.0", "water_loss": "358.0", "aging_days": "9", "soaking_time_sec": "75", "cell_weight_sd": 0.029, "tested": true, "capacity_rate": "99.1", "charge_rate": "98.1", "mt_voltage": "12.62", "mt_current": "5561.0", "rated_capacity": "60.0"}], "AGM90_H1": [{"lot_id": "090C26D244282202H2", "prod_date": "2026-04-24", "electrolyte_temp": "33.8", "tank_temp": "39.8", "charge_amount": "104.9", "fill_weight": "7871.0", "water_loss": "655.0", "aging_days": "6", "soaking_time_sec": "72", "cell_weight_sd": 0.097, "tested": true, "capacity_rate": "98.4", "charge_rate": "104.0", "mt_voltage": "12.56", "mt_current": "7479.0", "rated_capacity": "90.0"}, {"lot_id": "090C26K236397171H3", "prod_date": "2026-11-23", "electrolyte_temp": "34.9", "tank_temp": "39.9", "charge_amount": "107.2", "fill_weight": "7859.0", "water_loss": "547.0", "aging_days": "6", "soaking_time_sec": "93", "cell_weight_sd": 0.097, "tested": true, "capacity_rate": "99.4", "charge_rate": "97.4", "mt_voltage": "12.57", "mt_current": "8134.0", "rated_capacity": "90.0"}], "AGM70_H3": [{"lot_id": "070C26I252129081H3", "prod_date": "2026-09-25", "electrolyte_temp": "39.4", "tank_temp": "36.2", "charge_amount": "82.2", "fill_weight": "5941.0", "water_loss": "466.0", "aging_days": "9", "soaking_time_sec": "70", "cell_weight_sd": 0.034, "tested": false}, {"lot_id": "070C26L240914955H2", "prod_date": "2026-12-24", "electrolyte_temp": "32.3", "tank_temp": "37.7", "charge_amount": "80.2", "fill_weight": "5979.0", "water_loss": "466.0", "aging_days": "9", "soaking_time_sec": "78", "cell_weight_sd": 0.073, "tested": true, "capacity_rate": "95.6", "charge_rate": "97.6", "mt_voltage": "12.74", "mt_current": "6467.0", "rated_capacity": "70.0"}], "AGM90_K3": [{"lot_id": "090C26A255077721K3", "prod_date": "2026-01-25", "electrolyte_temp": "34.3", "tank_temp": "38.6", "charge_amount": "103.6", "fill_weight": "7623.0", "water_loss": "602.0", "aging_days": "9", "soaking_time_sec": "74", "cell_weight_sd": 0.092, "tested": true, "capacity_rate": "95.0", "charge_rate": "99.7", "mt_voltage": "12.77", "mt_current": "8386.0", "rated_capacity": "90.0"}, {"lot_id": "090C26B263612640K2", "prod_date": "2026-02-26", "electrolyte_temp": "31.4", "tank_temp": "41.2", "charge_amount": "102.1", "fill_weight": "7436.0", "water_loss": "624.0", "aging_days": "7", "soaking_time_sec": "77", "cell_weight_sd": 0.083, "tested": true, "capacity_rate": "96.8", "charge_rate": "95.4", "mt_voltage": "12.4", "mt_current": "8631.0", "rated_capacity": "90.0"}, {"lot_id": "090C26J268401687K1", "prod_date": "2026-10-26", "electrolyte_temp": "37.1", "tank_temp": "41.5", "charge_amount": "103.6", "fill_weight": "7528.0", "water_loss": "543.0", "aging_days": "5", "soaking_time_sec": "74", "cell_weight_sd": 0.066, "tested": true, "capacity_rate": "98.3", "charge_rate": "98.1", "mt_voltage": "12.22", "mt_current": "7773.0", "rated_capacity": "90.0"}, {"lot_id": "090C26K038105267K1", "prod_date": "2026-11-03", "electrolyte_temp": "31.2", "tank_temp": "39.2", "charge_amount": "101.4", "fill_weight": "7121.0", "water_loss": "559.0", "aging_days": "7", "soaking_time_sec": "74", "cell_weight_sd": 0.047, "tested": true, "capacity_rate": "96.2", "charge_rate": "97.2", "mt_voltage": "12.69", "mt_current": "8407.0", "rated_capacity": "90.0"}, {"lot_id": "090C26K157427673K2", "prod_date": "2026-11-15", "electrolyte_temp": "34.4", "tank_temp": "38.0", "charge_amount": "99.3", "fill_weight": "7599.0", "water_loss": "591.0", "aging_days": "8", "soaking_time_sec": "86", "cell_weight_sd": 0.045, "tested": true, "capacity_rate": "95.5", "charge_rate": "93.1", "mt_voltage": "12.61", "mt_current": "8420.0", "rated_capacity": "90.0"}], "AGM50_K3": [{"lot_id": "050C26C195195147K3", "prod_date": "2026-03-19", "electrolyte_temp": "35.1", "tank_temp": "43.1", "charge_amount": "55.2", "fill_weight": "4036.0", "water_loss": "407.0", "aging_days": "5", "soaking_time_sec": "71", "cell_weight_sd": 0.043, "tested": false}, {"lot_id": "050C26C270592516K2", "prod_date": "2026-03-27", "electrolyte_temp": "36.2", "tank_temp": "34.2", "charge_amount": "55.7", "fill_weight": "4108.0", "water_loss": "272.0", "aging_days": "7", "soaking_time_sec": "77", "cell_weight_sd": 0.011, "tested": false}], "AGM80_H3": [{"lot_id": "080C26D283230363H1", "prod_date": "2026-04-28", "electrolyte_temp": "33.9", "tank_temp": "35.8", "charge_amount": "90.8", "fill_weight": "6762.0", "water_loss": "669.0", "aging_days": "6", "soaking_time_sec": "86", "cell_weight_sd": 0.085, "tested": false}], "AGM70_K1": [{"lot_id": "070C26E018163380K2", "prod_date": "2026-05-01", "electrolyte_temp": "34.9", "tank_temp": "34.8", "charge_amount": "79.2", "fill_weight": "5912.0", "water_loss": "511.0", "aging_days": "6", "soaking_time_sec": "75", "cell_weight_sd": 0.074, "tested": true, "capacity_rate": "98.7", "charge_rate": "99.8", "mt_voltage": "12.74", "mt_current": "6362.0", "rated_capacity": "70.0"}, {"lot_id": "070C26G036050561K2", "prod_date": "2026-07-03", "electrolyte_temp": "32.2", "tank_temp": "40.4", "charge_amount": "79.4", "fill_weight": "5786.0", "water_loss": "426.0", "aging_days": "5", "soaking_time_sec": "68", "cell_weight_sd": 0.036, "tested": false}, {"lot_id": "070C26L203221632K3", "prod_date": "2026-12-20", "electrolyte_temp": "32.2", "tank_temp": "35.1", "charge_amount": "76.9", "fill_weight": "5538.0", "water_loss": "453.0", "aging_days": "8", "soaking_time_sec": "79", "cell_weight_sd": 0.051, "tested": false}], "AGM80_K1": [{"lot_id": "080C26F029787477K2", "prod_date": "2026-06-02", "electrolyte_temp": "33.5", "tank_temp": "42.0", "charge_amount": "90.4", "fill_weight": "6892.0", "water_loss": "557.0", "aging_days": "6", "soaking_time_sec": "92", "cell_weight_sd": 0.098, "tested": false}, {"lot_id": "080C26I054403134K1", "prod_date": "2026-09-05", "electrolyte_temp": "36.6", "tank_temp": "36.8", "charge_amount": "93.1", "fill_weight": "6645.0", "water_loss": "545.0", "aging_days": "9", "soaking_time_sec": "67", "cell_weight_sd": 0.06, "tested": false}], "AGM50_S1": [{"lot_id": "050C26A210251968S2", "prod_date": "2026-01-21", "electrolyte_temp": "36.2", "tank_temp": "35.9", "charge_amount": "60.2", "fill_weight": "4223.0", "water_loss": "317.0", "aging_days": "5", "soaking_time_sec": "87", "cell_weight_sd": 0.048, "tested": true, "capacity_rate": "102.6", "charge_rate": "101.2", "mt_voltage": "12.42", "mt_current": "4461.0", "rated_capacity": "50.0"}, {"lot_id": "050C26E057640300S3", "prod_date": "2026-05-05", "electrolyte_temp": "36.5", "tank_temp": "36.7", "charge_amount": "61.0", "fill_weight": "4325.0", "water_loss": "384.0", "aging_days": "7", "soaking_time_sec": "80", "cell_weight_sd": 0.066, "tested": false}, {"lot_id": "050C26J064024982S1", "prod_date": "2026-10-06", "electrolyte_temp": "32.7", "tank_temp": "36.9", "charge_amount": "55.8", "fill_weight": "4268.0", "water_loss": "352.0", "aging_days": "6", "soaking_time_sec": "90", "cell_weight_sd": 0.043, "tested": true, "capacity_rate": "93.8", "charge_rate": "100.1", "mt_voltage": "12.64", "mt_current": "4583.0", "rated_capacity": "50.0"}], "AGM105_H3": [{"lot_id": "105C26D125697190H1", "prod_date": "2026-04-12", "electrolyte_temp": "40.8", "tank_temp": "41.5", "charge_amount": "122.6", "fill_weight": "9037.0", "water_loss": "742.0", "aging_days": "8", "soaking_time_sec": "72", "cell_weight_sd": 0.044, "tested": false}, {"lot_id": "105C26I174109552H1", "prod_date": "2026-09-17", "electrolyte_temp": "32.4", "tank_temp": "40.6", "charge_amount": "123.5", "fill_weight": "8929.0", "water_loss": "835.0", "aging_days": "5", "soaking_time_sec": "70", "cell_weight_sd": 0.104, "tested": true, "capacity_rate": "99.5", "charge_rate": "100.1", "mt_voltage": "12.69", "mt_current": "9976.0", "rated_capacity": "105.0"}], "AGM60_H1": [{"lot_id": "060C26F145523264H1", "prod_date": "2026-06-14", "electrolyte_temp": "32.6", "tank_temp": "36.1", "charge_amount": "66.6", "fill_weight": "5008.0", "water_loss": "461.0", "aging_days": "8", "soaking_time_sec": "76", "cell_weight_sd": 0.048, "tested": false}, {"lot_id": "060C26I139803946H2", "prod_date": "2026-09-13", "electrolyte_temp": "39.6", "tank_temp": "35.8", "charge_amount": "64.2", "fill_weight": "5082.0", "water_loss": "454.0", "aging_days": "6", "soaking_time_sec": "69", "cell_weight_sd": 0.056, "tested": true, "capacity_rate": "99.4", "charge_rate": "98.9", "mt_voltage": "12.6", "mt_current": "4985.0", "rated_capacity": "60.0"}], "AGM80_H1": [{"lot_id": "080C26H165696942H2", "prod_date": "2026-08-16", "electrolyte_temp": "32.5", "tank_temp": "37.1", "charge_amount": "93.3", "fill_weight": "6721.0", "water_loss": "536.0", "aging_days": "5", "soaking_time_sec": "72", "cell_weight_sd": 0.073, "tested": false}], "AGM70_S1": [{"lot_id": "070C26A174116461S3", "prod_date": "2026-01-17", "electrolyte_temp": "34.7", "tank_temp": "36.6", "charge_amount": "83.1", "fill_weight": "5925.0", "water_loss": "463.0", "aging_days": "7", "soaking_time_sec": "66", "cell_weight_sd": 0.059, "tested": true, "capacity_rate": "99.6", "charge_rate": "105.4", "mt_voltage": "12.39", "mt_current": "6148.0", "rated_capacity": "70.0"}, {"lot_id": "070C26E258728091S2", "prod_date": "2026-05-25", "electrolyte_temp": "35.0", "tank_temp": "39.5", "charge_amount": "81.5", "fill_weight": "6129.0", "water_loss": "398.0", "aging_days": "8", "soaking_time_sec": "79", "cell_weight_sd": 0.028, "tested": true, "capacity_rate": "99.3", "charge_rate": "99.9", "mt_voltage": "12.38", "mt_current": "6967.0", "rated_capacity": "70.0"}], "AGM60_K3": [{"lot_id": "060C26G233326814K2", "prod_date": "2026-07-23", "electrolyte_temp": "28.6", "tank_temp": "30.0", "charge_amount": "65.8", "fill_weight": "5116.0", "water_loss": "429.0", "aging_days": "5", "soaking_time_sec": "65", "cell_weight_sd": 0.061, "tested": true, "capacity_rate": "93.7", "charge_rate": "99.4", "mt_voltage": "12.53", "mt_current": "5469.0", "rated_capacity": "60.0"}, {"lot_id": "060C26J020051788K3", "prod_date": "2026-10-02", "electrolyte_temp": "34.7", "tank_temp": "36.7", "charge_amount": "72.7", "fill_weight": "4984.0", "water_loss": "343.0", "aging_days": "7", "soaking_time_sec": "76", "cell_weight_sd": 0.045, "tested": false}], "AGM50_K1": [{"lot_id": "050C26C150210753K1", "prod_date": "2026-03-15", "electrolyte_temp": "33.7", "tank_temp": "37.9", "charge_amount": "61.4", "fill_weight": "4051.0", "water_loss": "312.0", "aging_days": "6", "soaking_time_sec": "77", "cell_weight_sd": 0.045, "tested": true, "capacity_rate": "98.7", "charge_rate": "96.5", "mt_voltage": "12.58", "mt_current": "4586.0", "rated_capacity": "50.0"}, {"lot_id": "050C26E091794060K2", "prod_date": "2026-05-09", "electrolyte_temp": "30.4", "tank_temp": "36.3", "charge_amount": "55.3", "fill_weight": "4097.0", "water_loss": "381.0", "aging_days": "5", "soaking_time_sec": "74", "cell_weight_sd": 0.056, "tested": true, "capacity_rate": "93.5", "charge_rate": "106.1", "mt_voltage": "12.51", "mt_current": "4752.0", "rated_capacity": "50.0"}], "AGM90_S1": [{"lot_id": "090C26D040618654S2", "prod_date": "2026-04-04", "electrolyte_temp": "37.9", "tank_temp": "38.5", "charge_amount": "105.7", "fill_weight": "7586.0", "water_loss": "631.0", "aging_days": "5", "soaking_time_sec": "89", "cell_weight_sd": 0.095, "tested": true, "capacity_rate": "99.7", "charge_rate": "98.1", "mt_voltage": "12.87", "mt_current": "7601.0", "rated_capacity": "90.0"}, {"lot_id": "090C26D202509992S3", "prod_date": "2026-04-20", "electrolyte_temp": "35.6", "tank_temp": "37.5", "charge_amount": "103.5", "fill_weight": "7528.0", "water_loss": "604.0", "aging_days": "8", "soaking_time_sec": "62", "cell_weight_sd": 0.074, "tested": true, "capacity_rate": "98.6", "charge_rate": "98.2", "mt_voltage": "12.39", "mt_current": "7948.0", "rated_capacity": "90.0"}], "AGM90_H3": [{"lot_id": "090C26B024658399H2", "prod_date": "2026-02-02", "electrolyte_temp": "33.2", "tank_temp": "38.3", "charge_amount": "103.1", "fill_weight": "7922.0", "water_loss": "667.0", "aging_days": "7", "soaking_time_sec": "75", "cell_weight_sd": 0.103, "tested": true, "capacity_rate": "97.7", "charge_rate": "106.5", "mt_voltage": "12.6", "mt_current": "8123.0", "rated_capacity": "90.0"}, {"lot_id": "090C26E216764711H3", "prod_date": "2026-05-21", "electrolyte_temp": "36.6", "tank_temp": "39.3", "charge_amount": "104.0", "fill_weight": "8035.0", "water_loss": "527.0", "aging_days": "6", "soaking_time_sec": "75", "cell_weight_sd": 0.05, "tested": true, "capacity_rate": "99.4", "charge_rate": "107.5", "mt_voltage": "12.55", "mt_current": "7785.0", "rated_capacity": "90.0"}, {"lot_id": "090C26H242029117H1", "prod_date": "2026-08-24", "electrolyte_temp": "38.9", "tank_temp": "39.0", "charge_amount": "103.1", "fill_weight": "7803.0", "water_loss": "656.0", "aging_days": "8", "soaking_time_sec": "82", "cell_weight_sd": 0.082, "tested": true, "capacity_rate": "99.9", "charge_rate": "103.5", "mt_voltage": "12.53", "mt_current": "7827.0", "rated_capacity": "90.0"}, {"lot_id": "090C26I099156353H1", "prod_date": "2026-09-09", "electrolyte_temp": "35.5", "tank_temp": "40.0", "charge_amount": "103.4", "fill_weight": "7954.0", "water_loss": "658.0", "aging_days": "9", "soaking_time_sec": "79", "cell_weight_sd": 0.056, "tested": false}], "AGM50_S3": [{"lot_id": "050C26F226296221S3", "prod_date": "2026-06-22", "electrolyte_temp": "36.3", "tank_temp": "38.9", "charge_amount": "56.6", "fill_weight": "4085.0", "water_loss": "306.0", "aging_days": "5", "soaking_time_sec": "65", "cell_weight_sd": 0.053, "tested": false}], "AGM60_S1": [{"lot_id": "060C26K112527686S1", "prod_date": "2026-11-11", "electrolyte_temp": "34.4", "tank_temp": "41.5", "charge_amount": "72.0", "fill_weight": "5139.0", "water_loss": "438.0", "aging_days": "8", "soaking_time_sec": "86", "cell_weight_sd": 0.041, "tested": true, "capacity_rate": "99.6", "charge_rate": "103.6", "mt_voltage": "12.54", "mt_current": "5326.0", "rated_capacity": "60.0"}], "AGM60_H3": [{"lot_id": "060C26A130389858H2", "prod_date": "2026-01-13", "electrolyte_temp": "34.2", "tank_temp": "43.3", "charge_amount": "71.5", "fill_weight": "5108.0", "water_loss": "365.0", "aging_days": "9", "soaking_time_sec": "74", "cell_weight_sd": 0.066, "tested": false}]};
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function openRawData(modelName) {
+    const lots = RAW_DATA_BY_MODEL[modelName] || [];
+    const testedCount = lots.filter(function(l){ return l.tested; }).length;
+
+    document.getElementById('rawDataTitle').textContent = modelName + ' · 로트별 RAW DATA';
+    document.getElementById('rawDataSubtitle').textContent =
+      '총 ' + lots.length + '로트(공정) · 시험 매칭 ' + testedCount + '건 · 값은 process_data.csv / test_data.csv 원본 그대로';
+
+    let rows = lots.map(function(l){
+      const testCells = l.tested
+        ? '<td>' + escapeHtml(l.capacity_rate) + '</td>'
+          + '<td>' + escapeHtml(l.charge_rate) + '</td>'
+          + '<td>' + escapeHtml(l.mt_voltage) + '</td>'
+          + '<td>' + escapeHtml(l.mt_current) + '</td>'
+        : '<td colspan="4" style="color:var(--color-text-secondary);">— 시험 미실시(미매칭 로트) —</td>';
+      return '<tr>'
+        + '<td style="font-family:Consolas,monospace;font-size:0.75rem;">' + escapeHtml(l.lot_id) + '</td>'
+        + '<td>' + escapeHtml(l.prod_date) + '</td>'
+        + '<td>' + escapeHtml(l.electrolyte_temp) + '</td>'
+        + '<td>' + escapeHtml(l.tank_temp) + '</td>'
+        + '<td>' + escapeHtml(l.charge_amount) + '</td>'
+        + '<td>' + escapeHtml(l.fill_weight) + '</td>'
+        + '<td>' + escapeHtml(l.water_loss) + '</td>'
+        + '<td>' + escapeHtml(l.cell_weight_sd) + '</td>'
+        + '<td>' + escapeHtml(l.aging_days) + '</td>'
+        + '<td>' + escapeHtml(l.soaking_time_sec) + '</td>'
+        + testCells
+        + '</tr>';
+    }).join('');
+
+    if (lots.length === 0) {
+      rows = '<tr><td colspan="14" style="text-align:center;color:var(--color-text-secondary);padding:var(--space-6) 0;">이 형명에 대한 로트 데이터를 찾을 수 없습니다.</td></tr>';
+    }
+
+    document.getElementById('rawDataBody').innerHTML =
+      '<div class="modal-note">📋 왼쪽 6개 컬럼(전해액온도~함침시간)은 공정 데이터(process_data.csv), 오른쪽 4개 컬럼(Z capacity_rate~MT(A))은 시험 데이터(test_data.csv)입니다. 시험을 아직 하지 않은 로트는 오른쪽 값이 비어 있으며, 이는 부적합이 아니라 "아직 검사하지 않음"을 뜻합니다.</div>'
+      + '<div class="table-scroll"><table><thead><tr>'
+      + '<th>lot_id</th><th>생산일</th><th>전해액온도(℃)</th><th>수조온도(℃)</th><th>충전량(Ah)</th>'
+      + '<th>주입량(g)</th><th>감액량(g)</th><th>셀중량σ(g)</th><th>에이징일수</th><th>함침시간(초)</th>'
+      + '<th>Z capacity_rate(%)</th><th>charge_rate(%)</th><th>MT(V)</th><th>MT(A)</th>'
+      + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+
+    document.getElementById('rawDataModal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeRawData() {
+    document.getElementById('rawDataModal').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') closeRawData();
+  });
+</script>
+  function setTrendPeriod(el, period) {
+    document.querySelectorAll('.period-tab').forEach(function(t){ t.classList.remove('active'); });
+    el.classList.add('active');
+    document.querySelectorAll('.trend-view').forEach(function(v){
+      v.classList.toggle('active', v.getAttribute('data-period') === period);
+    });
+  }
+  function setTrendModel(el, name) {
+    document.querySelectorAll('.model-chip').forEach(function(c){ c.classList.remove('active'); });
+    el.classList.add('active');
+    // 목업 단계: 형명 선택 시 실제 데이터 갱신은 없고 선택 상태만 표시합니다.
+    // 실제 구현 시 LotDerived를 model_name으로 필터링해 동일한 차트를 다시 그립니다.
+  }
+</script>
+</body>
+</html>

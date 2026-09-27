@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>배터리 게이지 컨셉</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    /* ── 세방 디자인 시스템 토큰 (design.md 그대로) ── */
+    --sebang-dark-gray:#333F48;
+    --sebang-gray-700:#717779;
+    --sebang-gray-400:#B5BBBD;
+    --sebang-light-gray:#D0D0CE;
+    --sebang-light-gray-50:#FBFBFB;
+    --sebang-light-gray-300:#E3E3E2;
+    --sebang-green:#0097A9;
+    --sebang-green-100:#CCEAEE;
+    --sebang-green-300:#66C1CB;
+    --sebang-green-700:#006A76;
+    --sebang-green-800:#00535D;
+    --sebang-orange:#EB3300;
+    --sebang-orange-100:#FBD6CC;
+    --sebang-orange-700:#A42400;
+
+    --color-bg-base:#FFFFFF;
+    --color-bg-surface:var(--sebang-light-gray-50);
+    --color-border:var(--sebang-light-gray);
+    --color-text-primary:var(--sebang-dark-gray);
+    --color-text-secondary:var(--sebang-gray-700);
+    --color-accent:var(--sebang-green-700);
+    --color-accent-strong:var(--sebang-green);
+    --color-warn:var(--sebang-orange-700);
+
+    /* ── 이번 개편: 전체적으로 한 단계씩 키운 타입 스케일 ── */
+    --fs-display:3rem;       /* 48px — 배터리 위 %가 이만큼 커집니다 */
+    --fs-h1:2.25rem;         /* 36px */
+    --fs-h2:1.5rem;          /* 24px */
+    --fs-body-lg:1.25rem;    /* 20px */
+    --fs-body:1.125rem;      /* 18px — 기존 16px 본문보다 한 단계 위 */
+    --fs-caption:0.9375rem;  /* 15px — 기존 12~13px 캡션보다 한 단계 위 */
+
+    --space-2:8px; --space-3:12px; --space-4:16px; --space-5:24px; --space-6:32px; --space-7:48px; --space-8:64px;
+    --radius-md:8px; --radius-lg:16px; --radius-full:999px;
+
+    /* 배터리 사진(agm-rocket-agm105-crop.png)을 실제 케이스 외곽선에 딱 맞게 자른 크롭 이미지 기준값.
+       크롭 이미지 안에서 "케이스 몸통 윗면(단자 제외)"이 시작되는 지점의 세로 비율 — 게이지는
+       이 지점(100%)부터 이미지 맨 아래(0%)까지만 움직이도록 clip-path/waterline 계산에 사용한다. */
+    --battery-case-top:28.07%;
+  }
+
+  *{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    margin:0;
+    background:var(--color-bg-base);
+    color:var(--color-text-primary);
+    font-family:"Noto Sans KR","Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:var(--fs-body);
+    line-height:1.65;
+    padding:var(--space-6) var(--space-5) var(--space-8);
+  }
+  .wrap{ max-width:1040px; margin:0 auto; display:flex; flex-direction:column; gap:var(--space-6); }
+
+  h1,h2,h3{ margin:0; text-wrap:balance; font-weight:700; }
+  .eyebrow{
+    font-size:var(--fs-caption); font-weight:700; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--color-accent); margin:0 0 var(--space-2);
+  }
+  .page-title{ font-size:var(--fs-h1); line-height:1.25; }
+  .page-lede{ font-size:var(--fs-body-lg); color:var(--color-text-secondary); max-width:70ch; margin-top:var(--space-3); }
+
+  /* ── 1) 상단 한줄 결론 배너 ── */
+  .verdict{
+    display:flex; gap:var(--space-4); align-items:center;
+    background:linear-gradient(135deg, var(--sebang-green-800), var(--sebang-green-700));
+    color:#fff; border-radius:var(--radius-lg);
+    padding:var(--space-5) var(--space-6);
+    box-shadow:0 8px 24px rgba(0,83,93,0.28);
+  }
+  .verdict .icon{
+    flex:none; width:56px; height:56px; border-radius:var(--radius-full);
+    background:rgba(255,255,255,0.16); display:flex; align-items:center; justify-content:center; font-size:28px;
+  }
+  .verdict .label{ font-size:var(--fs-caption); font-weight:700; letter-spacing:0.04em; opacity:0.85; text-transform:uppercase; }
+  .verdict .line{ font-size:1.375rem; font-weight:700; line-height:1.45; text-wrap:balance; }
+  .verdict .line b{ font-weight:900; }
+  .verdict .line .pulse-num{ display:inline-block; }
+
+  /* ── 5초 주기 강조 펄스: 중요한 숫자·문구에 적용 ── */
+  @keyframes impact-pulse{
+    0%   { transform:scale(1);      text-shadow:0 0 0 rgba(0,0,0,0); }
+    4%   { transform:scale(1.09);   text-shadow:0 0 18px currentColor; }
+    9%   { transform:scale(1);      text-shadow:0 0 0 rgba(0,0,0,0); }
+    100% { transform:scale(1); }
+  }
+  .pulse{ animation:impact-pulse 5s ease-in-out infinite; display:inline-block; transform-origin:center; }
+  @media (prefers-reduced-motion:reduce){ .pulse{ animation:none; } }
+
+  /* ── 2) 배터리 게이지 카드 ── */
+  .gauge-row{ display:grid; grid-template-columns:repeat(auto-fit, minmax(400px, 1fr)); gap:var(--space-5); }
+  .gauge-card{
+    background:var(--color-bg-surface); border:1px solid var(--color-border); border-radius:var(--radius-lg);
+    padding:var(--space-6) var(--space-5); display:flex; flex-direction:column; align-items:center; gap:var(--space-4);
+    text-align:center;
+  }
+  .gauge-card .metric-name{ font-size:var(--fs-h2); }
+  .gauge-card .metric-sub{ font-size:var(--fs-caption); color:var(--color-text-secondary); margin-top:2px; }
+
+  .battery-figure{ position:relative; width:340px; }
+  .battery-pct{
+    font-family:"Inter","Noto Sans KR",sans-serif; font-weight:800; font-variant-numeric:tabular-nums;
+    font-size:var(--fs-display); line-height:1; color:var(--color-accent);
+    margin-bottom:var(--space-2);
+  }
+  .battery-pct .unit{ font-size:1.25rem; font-weight:700; margin-left:2px; }
+  .battery-pct.is-warn{ color:var(--color-warn); }
+
+  /* ── 실제 세방전지(ROCKET) AGM 배터리 제품 사진을 %만큼 선명하게 드러내는 게이지 ──
+     흐린 원본(항상 전체 표시) 위에, 같은 사진을 %만큼만 아래에서부터 또렷하게 겹쳐
+     "채워지는" 인상을 만든다. 사진은 배터리 외곽선에 딱 맞게 미리 크롭(agm-rocket-agm105-crop.png,
+     390×228)해뒀고 컨테이너 비율도 그 크롭 비율과 동일하게 맞춰, 원본처럼 사진 바깥 여백까지
+     채워지는 일이 없다. 게이지는 --fill(0~100%)이 그대로 케이스 높이 비율이 아니라, 단자를 뺀
+     "케이스 몸통 윗면"(--battery-case-top)부터 맨 아래까지만 움직이도록 변환해서 쓴다. */
+  .battery-photo-figure{
+    position:relative; width:340px; aspect-ratio:390/228; margin:0 auto;
+    border-radius:var(--radius-md); overflow:hidden;
+    background:#fff; border:1px solid var(--color-border);
+    --fill:0%;
+  }
+  .battery-photo{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  /* 100%(그림이 완전히 선명해지는 지점) 미만 구간은 "흐림→선명"이 또렷이 대비되도록
+     블러 + 채도저하를 함께 건다 — 색만 옅어지면 큰 사진에서는 차이가 잘 안 보인다. */
+  .battery-photo--dim{ filter:blur(3px) grayscale(0.55) brightness(1.22) contrast(0.85) opacity(0.38); }
+  .battery-photo-clip{
+    position:absolute; inset:0;
+    clip-path:inset(calc(100% - (100% - var(--battery-case-top)) * var(--fill, 0%) / 100%) 0 0 0);
+    transition:clip-path 1200ms cubic-bezier(0.4,0,0.2,1);
+  }
+  .battery-waterline{
+    position:absolute; left:6%; right:6%; height:3px; border-radius:999px;
+    top:calc(100% - (100% - var(--battery-case-top)) * var(--fill, 0%) / 100%);
+    background:linear-gradient(90deg, transparent, var(--color-accent-strong), transparent);
+    box-shadow:0 0 12px 1px var(--color-accent-strong);
+    transition:top 1200ms cubic-bezier(0.4,0,0.2,1);
+  }
+  /* 페이지 진입(재방문 포함) 애니메이션 준비 단계 — 이 클래스가 붙어있는 동안은
+     transition을 꺼서 "0%로 리셋"이 화면에 애니메이션으로 보이지 않게 한다. */
+  .battery-photo-figure.no-anim,
+  .battery-photo-figure.no-anim .battery-photo-clip,
+  .battery-photo-figure.no-anim .battery-waterline{ transition:none !important; }
+  .battery-photo-figure.is-warn .battery-waterline{
+    background:linear-gradient(90deg, transparent, var(--sebang-orange), transparent);
+    box-shadow:0 0 12px 1px var(--sebang-orange);
+  }
+  .battery-overflow-badge{
+    position:absolute; top:-10px; left:50%; transform:translateX(-50%);
+    width:26px; height:26px; border-radius:50%; background:var(--color-accent);
+    color:#fff; font-size:15px; font-weight:800; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 6px rgba(0,0,0,0.25);
+  }
+
+  .explain{
+    font-size:var(--fs-body); color:var(--color-text-primary); text-align:left;
+    background:#fff; border:1px solid var(--color-border); border-radius:var(--radius-md);
+    padding:var(--space-4); line-height:1.7;
+  }
+  .explain b{ color:var(--color-accent); }
+  .explain.is-warn b{ color:var(--color-warn); }
+
+  .status-chip{
+    display:inline-flex; align-items:center; gap:6px; font-size:var(--fs-caption); font-weight:700;
+    padding:6px 14px; border-radius:var(--radius-full); background:var(--sebang-green-100); color:var(--sebang-green-800);
+  }
+  .status-chip .dot{ width:8px; height:8px; border-radius:50%; background:currentColor; }
+  .status-chip.is-warn{ background:var(--sebang-orange-100); color:var(--color-warn); }
+
+  /* ── 3) 참고 예시 (SPEC 미달) ── */
+  .ref-note{ font-size:var(--fs-caption); color:var(--color-text-secondary); }
+
+  /* ── 4) 적용 노트 ── */
+  .notes{
+    background:var(--color-bg-surface); border:1px solid var(--color-border); border-radius:var(--radius-lg);
+    padding:var(--space-5) var(--space-6);
+  }
+  .notes h3{ font-size:var(--fs-h2); margin-bottom:var(--space-3); }
+  .notes ol{ margin:0; padding-left:1.3em; display:flex; flex-direction:column; gap:var(--space-3); font-size:var(--fs-body); }
+  .notes li b{ color:var(--color-accent); }
+  .notes li .old{ color:var(--color-text-secondary); text-decoration:line-through; font-size:var(--fs-caption); }
+
+  footer{ font-size:var(--fs-caption); color:var(--color-text-secondary); text-align:center; padding-top:var(--space-4); border-top:1px solid var(--color-border); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div>
+    <div class="eyebrow">③ 형명별 상세 분석 · 개편 컨셉안</div>
+    <h1 class="page-title">배터리가 눈에 보이는 채움만큼, 숫자가 눈에 들어오게</h1>
+    <p class="page-lede">
+      포화도(Y)·20시간 용량(Z) 숫자를 표로만 보여주던 방식 대신, 반투명한 배터리 그림이 실제 %만큼 선명하게 채워지는
+      형태로 바꾼 개념안입니다. 처음 화면을 보는 사람도 3초 안에 "지금 상태가 좋은지 나쁜지" 알 수 있도록,
+      핵심 숫자는 5초마다 한 번씩 살짝 커지며 빛나는 강조를 반복합니다.
+    </p>
+  </div>
+
+  <!-- 1) 상단 한줄 결론 -->
+  <div class="verdict">
+    <div class="icon">✅</div>
+    <div>
+      <div class="label">이번 분석 결론 (AGM70_S1 · 2026년 8월)</div>
+      <div class="line">
+        포화도 <b class="pulse pulse-num">92.4%</b> · 용량 <b class="pulse pulse-num">105.6%</b> — 두 지표 모두 정상 범위이며,
+        시험 매칭 24건 전량이 SPEC 기준을 만족했습니다.
+      </div>
+    </div>
+  </div>
+
+  <!-- 2) 배터리 게이지 두 장 -->
+  <div class="gauge-row">
+
+    <!-- Y: 포화도 -->
+    <div class="gauge-card">
+      <div>
+        <div class="metric-name">포화도 <span style="color:var(--color-text-secondary);font-weight:400;">(Y)</span></div>
+        <div class="metric-sub">전해액이 배터리 내부를 채운 정도</div>
+      </div>
+
+      <div class="battery-figure">
+        <div class="battery-pct"><span class="pulse fill-num" data-target="92.4">0.0</span><span class="unit">%</span></div>
+        <div class="battery-photo-figure" data-fill="92.4">
+          <img class="battery-photo battery-photo--dim" src="assets/agm-rocket-agm105-crop.png" alt="" aria-hidden="true" />
+          <div class="battery-photo-clip">
+            <img class="battery-photo" src="assets/agm-rocket-agm105-crop.png"
+                 alt="세방전지 ROCKET AGM 배터리 실물 사진, 케이스 안쪽에서만 92.4% 지점까지 선명하게 채워진 상태로 표시" />
+          </div>
+          <div class="battery-waterline"></div>
+        </div>
+      </div>
+
+      <span class="status-chip"><span class="dot"></span>관리기준(90%↑) 충족</span>
+
+      <div class="explain">
+        <b>포화도</b>는 배터리 내부의 빈 공간(공극)을 전해액이 얼마나 채우고 있는지 보여주는 값이에요.
+        <b>92.4%</b>는 <b>배터리 내부가 거의 가득 차 있다</b>는 뜻으로, 관리 기준인 90% 이상을 넘는 정상 범위입니다.
+        너무 적게 채워지면(포화도가 낮으면) 전해액이 부족해 방전 성능이 떨어질 수 있어요.
+      </div>
+    </div>
+
+    <!-- Z: 20시간 용량 -->
+    <div class="gauge-card">
+      <div>
+        <div class="metric-name">20시간 용량 <span style="color:var(--color-text-secondary);font-weight:400;">(Z)</span></div>
+        <div class="metric-sub">정격 용량 대비 실제로 방전된 비율</div>
+      </div>
+
+      <div class="battery-figure">
+        <div class="battery-pct"><span class="pulse fill-num" data-target="105.6">0.0</span><span class="unit">%</span></div>
+        <div class="battery-photo-figure" data-fill="100">
+          <div class="battery-overflow-badge" title="정격 용량 100%를 넘어선 값">+</div>
+          <img class="battery-photo battery-photo--dim" src="assets/agm-rocket-agm105-crop.png" alt="" aria-hidden="true" />
+          <div class="battery-photo-clip">
+            <img class="battery-photo" src="assets/agm-rocket-agm105-crop.png"
+                 alt="세방전지 ROCKET AGM 배터리 실물 사진, 케이스 안쪽 가득(100%)까지 선명하게 채워지고 정격 초과는 배지로 별도 표시" />
+          </div>
+          <div class="battery-waterline"></div>
+        </div>
+      </div>
+
+      <span class="status-chip"><span class="dot"></span>정격 용량 초과 (기준 100%)</span>
+
+      <div class="explain">
+        <b>20시간 용량</b>은 배터리를 20시간에 걸쳐 천천히 방전시켰을 때, 원래 설계된 정격 용량 대비
+        실제로 얼마나 방전됐는지의 비율이에요. <b>105.6%</b>는 <b>정격보다 더 많은 전기를 뽑아냈다</b>는 뜻으로,
+        배터리가 설계 기준보다 튼튼하게 만들어졌다는 좋은 신호입니다.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 3) SPEC 미달 예시 (참고) -->
+  <div class="gauge-row" style="grid-template-columns:1fr;">
+    <div class="gauge-card" style="flex-direction:row; text-align:left; align-items:center; gap:var(--space-5);">
+      <div class="battery-figure" style="width:190px; flex:none;">
+        <div class="battery-photo-figure is-warn" data-fill="64.2" style="width:190px;">
+          <img class="battery-photo battery-photo--dim" src="assets/agm-rocket-agm105-crop.png" alt="" aria-hidden="true" />
+          <div class="battery-photo-clip" style="filter:sepia(1) saturate(4) hue-rotate(-30deg) brightness(0.95);">
+            <img class="battery-photo" src="assets/agm-rocket-agm105-crop.png"
+                 alt="세방전지 ROCKET AGM 배터리 실물 사진, 케이스 안쪽 64.2% 지점까지만 채워지고 오렌지 톤으로 경고 표시된 상태" />
+          </div>
+          <div class="battery-waterline"></div>
+        </div>
+      </div>
+      <div>
+        <div class="battery-pct is-warn" style="font-size:1.75rem; margin-bottom:4px;"><span class="fill-num" data-target="64.2">0.0</span><span class="unit">%</span></div>
+        <span class="status-chip is-warn"><span class="dot"></span>관리기준(90%↑) 미달 — 참고 예시</span>
+        <div class="explain is-warn" style="margin-top:var(--space-3);">
+          이렇게 <b>기준에 못 미치면</b> 배터리 그림이 오렌지색으로 낮게 채워져, 표를 읽지 않아도
+          "이 로트는 확인이 필요하다"는 것을 바로 알아볼 수 있습니다. (오렌지·그린은 같은 화면에서 동시에
+          주 강조색으로 쓰지 않는 규칙에 따라, 이 예시 한 장에서만 오렌지를 사용했습니다.)
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4) 적용 노트 -->
+  <div class="notes">
+    <h3>이번 개편에서 바뀐 점</h3>
+    <ol>
+      <li><b>실물 배터리 사진 채움 그림</b> — 도형 대신 세방전지 ROCKET AGM 배터리 실제 제품 사진(gbattery.com 공개 이미지)을 케이스 외곽선에 딱 맞게 크롭해 사용, 흐리게 깔린 원본 위로 %만큼 아래에서부터 또렷해지는 방식으로 표현. 표를 읽지 않아도 한눈에 상태 파악 가능.</li>
+      <li><b>게이지가 배터리 케이스 안에서만 채워짐</b> — 사진 바깥 여백(단자 위쪽 흰 배경)까지 채워지던 문제를 수정. 사진을 배터리 외곽에 맞춰 미리 크롭하고, 게이지 기준선을 "단자를 뺀 케이스 몸통 윗면"(<code>--battery-case-top</code>)으로 잡아 100%여도 케이스 라인을 넘어가지 않음.</li>
+      <li><b>페이지 진입마다 차오르는 게이지</b> — 이전에는 처음부터 결과값이 채워진 채로 표시됐지만, 이제 이 화면에 들어올 때마다(새로고침·뒤로가기 복귀 포함) 게이지와 숫자가 0%에서 시작해 실제 값까지 차오르는 애니메이션으로 보여줌(<code>prefers-reduced-motion</code> 설정 시 애니메이션 없이 바로 최종값 표시).</li>
+      <li><b>5초 주기 강조</b> — 채우기 애니메이션이 끝난 뒤에도, 결론 배너의 핵심 숫자와 배터리 위 % 숫자가 5초마다 한 번씩 살짝 커지며 빛나 시선을 붙잡음(<code>prefers-reduced-motion</code> 설정 시 자동으로 꺼짐).</li>
+      <li><b>글자 크기 한 단계 확대</b> — 본문 <span class="old">16px</span> → <b>18px</b>, 캡션 <span class="old">12~13px</span> → <b>15px</b>, 결론 배너는 22px로 이 화면에서 가장 크게.</li>
+      <li><b>처음 보는 사람 기준 설명</b> — "포화도"·"20시간 용량" 같은 용어를 정의부터 풀어 쓰고, 숫자가 왜 좋은지/나쁜지까지 한 문장으로 덧붙임.</li>
+      <li><b>상단 한줄 결론</b> — 형명·기간·두 지표·SPEC 판정 결과를 표 위로 올려, 화면에 들어오자마자 "지금 상태"를 파악할 수 있게 함.</li>
+    </ol>
+  </div>
+
+  <footer>
+    이 화면은 실제 데이터와 연동되지 않은 <b>디자인 컨셉안</b>입니다 · 승인되면 <code>frontend/app/detail-analysis</code>·<code>app/dashboard</code>에 동일한 마크업/토큰으로 이식합니다.<br/>
+    배터리 사진 출처: 세방전지(gbattery.com) 제품소개 페이지의 ROCKET AGM 공개 이미지 — 정식 반영 전 브랜드팀 사용 승인 확인 필요.
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var DURATION = 1200; // ms, CSS transition(clip-path/top) 시간과 동일하게 맞춤
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
+
+  function animateFigure(figure){
+    var gaugeTarget = Math.min(parseFloat(figure.getAttribute('data-fill')) || 0, 100);
+    var card = figure.closest('.gauge-card') || figure.parentElement;
+    var numEl = card.querySelector('.fill-num');
+    var numTarget = numEl ? (parseFloat(numEl.getAttribute('data-target')) || 0) : 0;
+
+    // 1) 애니메이션 없이 즉시 0%로 리셋 (재방문마다 다시 차오르는 모습을 보여주기 위한 시작점)
+    figure.classList.add('no-anim');
+    figure.style.setProperty('--fill', '0%');
+    if (numEl) numEl.textContent = '0.0';
+    void figure.offsetHeight; // 리플로우를 강제해 0% 상태가 실제로 반영되게 함
+
+    if (reduceMotion) {
+      figure.style.setProperty('--fill', gaugeTarget + '%');
+      if (numEl) numEl.textContent = numTarget.toFixed(1);
+      figure.classList.remove('no-anim');
+      return;
+    }
+
+    requestAnimationFrame(function(){
+      figure.classList.remove('no-anim');
+      var start = null;
+      function step(ts){
+        if (start === null) start = ts;
+        var p = Math.min((ts - start) / DURATION, 1);
+        var eased = easeOutCubic(p);
+        figure.style.setProperty('--fill', (gaugeTarget * eased) + '%');
+        if (numEl) numEl.textContent = (numTarget * eased).toFixed(1);
+        if (p < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  function runAll(){
+    document.querySelectorAll('.battery-photo-figure[data-fill]').forEach(animateFigure);
+  }
+
+  // pageshow는 최초 진입과 브라우저 bfcache 복귀(뒤로/앞으로 가기) 모두에서 발생하므로,
+  // 이 페이지로 "올 때마다" 게이지가 0%부터 다시 차오르게 하기에 적합하다.
+  window.addEventListener('pageshow', runAll);
+})();
+</script>
+</body>
+</html>
