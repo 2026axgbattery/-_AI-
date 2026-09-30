@@ -20,15 +20,15 @@ export const X_COLUMN_ORDER = Object.keys(X_COLUMN_LABELS);
  * 이전에는 모든 필드가 `placeholder="예: 31.2"`로 동일해 필드별 자릿수 감이 전혀 안 잡혔다
  * (예: 에이징일수·충전 프로그램 이탈도까지 "31.2"로 표시됨, 2026-09-27 실사용 확인). */
 export const X_COLUMN_EXAMPLES: Record<string, number> = {
-  electrolyte_temp: 34.5,
-  tank_temp: 37.0,
-  soaking_time_sec: 80,
-  aging_days: 6,
-  formation_dv: -0.05,
-  cell_weight_mean: 4.7,
-  cell_weight_std: 0.15,
-  charge_ratio: 118,
-  charge_program_deviation_pct: -80,
+  electrolyte_temp: 25.1,
+  tank_temp: 25.0,
+  soaking_time_sec: 1804,
+  aging_days: 3,
+  formation_dv: 0.048,
+  cell_weight_mean: 211,
+  cell_weight_std: 2.6,
+  charge_ratio: 112,
+  charge_program_deviation_pct: 0,
 };
 
 export function specBadge(spec: SpecJudgmentResult): { label: string; tone: "pass" | "fail" | "unknown" } {

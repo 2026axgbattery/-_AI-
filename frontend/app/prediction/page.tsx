@@ -245,7 +245,7 @@ function buildVerdict(result: ManualPredictResponse): {
 export default function PredictionPage() {
   const [tab, setTab] = useState<Tab>("manual");
 
-  const [modelName, setModelName] = useState("AGM90_S1");
+  const [modelName, setModelName] = useState("AGM70_S1");
   const [xValues, setXValues] = useState<Record<string, string>>({});
   const [manualResult, setManualResult] = useState<ManualPredictResponse | null>(null);
   // 바로 이전 실행 결과 — "조건을 바꾸면 Y·Z가 어떻게 달라지는지"를 재실행할 때마다 델타로
@@ -710,7 +710,7 @@ export default function PredictionPage() {
                         type="text"
                         value={modelName}
                         onChange={(e) => setModelName(e.target.value)}
-                        placeholder="예: AGM90_S1"
+                        placeholder="예: AGM70_S1"
                       />
                     </div>
                     {X_COLUMN_ORDER.map((col) => (
