@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+import math
+
 from scipy.stats import pearsonr
 
 SIGNIFICANCE_LEVEL = 0.05
@@ -15,4 +17,10 @@ def pearson_r_p(x: list[float], y: list[float]) -> dict:
     if n < 3 or n != len(y):
         return {"r": None, "p_value": None, "significant": False, "n": n}
     r, p = pearsonr(x, y)
-    return {"r": float(r), "p_value": float(p), "significant": bool(p < SIGNIFICANCE_LEVEL), "n": n}
+    r_value, p_value = float(r), float(p)
+    # x 또는 y의 분산이 0(값이 전부 동일)이면 scipy가 예외 없이 nan/nan을 반환한다 — 표준 JSON은
+    # NaN 리터럴을 지원하지 않아 그대로 내보내면 프런트 res.json() 파싱이 깨진다(vif.py가
+    # Infinity를 캡핑하는 것과 같은 문제 클래스). 계산 불가로 None 처리한다.
+    if math.isnan(r_value) or math.isnan(p_value):
+        return {"r": None, "p_value": None, "significant": False, "n": n}
+    return {"r": r_value, "p_value": p_value, "significant": bool(p_value < SIGNIFICANCE_LEVEL), "n": n}

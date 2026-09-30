@@ -12,6 +12,7 @@ import io
 from fastapi import APIRouter, HTTPException, UploadFile
 
 from backend.db import repository as repo
+from backend.routers.upload import _decode_csv_bytes
 
 router = APIRouter(prefix="/api", tags=["spec-thresholds"])
 
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/api", tags=["spec-thresholds"])
 @router.post("/spec-thresholds/upload")
 async def upload_spec_thresholds(file: UploadFile):
     raw = await file.read()
-    text = raw.decode("utf-8-sig")
+    text = _decode_csv_bytes(raw)
     reader = csv.DictReader(io.StringIO(text))
     rows = list(reader)
 

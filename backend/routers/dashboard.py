@@ -6,7 +6,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from backend.analysis.cca_spec import judge_en_cca, judge_sae_cca
+from backend.analysis.cca_spec import (
+    aggregate_cca_pass_rates,
+    judge_en_cca,
+    judge_sae_cca,
+)
 from backend.analysis.regression import (
     InsufficientSampleError,
     fit_x_to_y,
@@ -137,16 +141,7 @@ def get_kpi():
     conn = repo.get_connection()
     try:
         summary = repo.get_kpi_summary(conn)
-        agg = {"en_cca_evaluated": 0, "en_cca_pass": 0, "sae_cca_evaluated": 0, "sae_cca_pass": 0}
-        for c in repo.get_model_cca_checkpoints(conn):
-            en = judge_en_cca(c["en_cca_10s_voltage"], c["en_cca_6v_hold_sec"])
-            if en["result"] is not None:
-                agg["en_cca_evaluated"] += 1
-                agg["en_cca_pass"] += en["result"] == "pass"
-            sae = judge_sae_cca(c["sae_cca_7v2_hold_sec"])
-            if sae["result"] is not None:
-                agg["sae_cca_evaluated"] += 1
-                agg["sae_cca_pass"] += sae["result"] == "pass"
+        agg = aggregate_cca_pass_rates(repo.get_model_cca_checkpoints(conn))
         summary.update(agg)
         return summary
     finally:

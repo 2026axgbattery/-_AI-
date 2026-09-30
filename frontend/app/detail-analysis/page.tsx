@@ -16,8 +16,9 @@ import {
   type ModelTrendResponse,
 } from "@/lib/api-client";
 import { extractBuyerCode } from "@/lib/buyer";
-import { ccaSpecBadge } from "@/lib/cca-spec";
+import { ccaPassRate, ccaSpecBadge } from "@/lib/cca-spec";
 import { specBadge } from "@/lib/diagnosis";
+import { fmt } from "@/lib/format";
 
 type Period = "day" | "month" | "year";
 type Scope = "all" | "model" | "buyer";
@@ -80,15 +81,10 @@ function aggregateModels(rows: ModelSummaryRow[], minSample: number, label: stri
   };
 }
 
-function fmt(v: number | null | undefined, digits = 1): string {
-  if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return v.toFixed(digits);
-}
-
 /** CCA 합격률을 Y/Z와 동일한 배터리 게이지로 표현하기 위한 값 변환 — evaluated=0이면 시험 데이터 자체가 없는 것. */
 function ccaGaugeStats(pass: number, evaluated: number): { value: number | null; statusText: string; variant: "ok" | "warn" } {
-  if (evaluated === 0) return { value: null, statusText: "아직 시험 데이터 없음", variant: "ok" };
-  const rate = (pass / evaluated) * 100;
+  const rate = ccaPassRate(pass, evaluated);
+  if (rate === null) return { value: null, statusText: "아직 시험 데이터 없음", variant: "ok" };
   return {
     value: rate,
     statusText: `시험 매칭 ${evaluated}건 중 ${pass}건 합격`,
@@ -98,8 +94,8 @@ function ccaGaugeStats(pass: number, evaluated: number): { value: number | null;
 
 /** 형명별 상세 테이블(Z 컬럼과 동일한 형식)의 CCA 합격률 셀 표기. */
 function ccaCellText(pass: number, evaluated: number): string {
-  if (evaluated === 0) return "—";
-  const rate = (pass / evaluated) * 100;
+  const rate = ccaPassRate(pass, evaluated);
+  if (rate === null) return "—";
   return `${pass}/${evaluated}건 (${rate.toFixed(1)}%)`;
 }
 

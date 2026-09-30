@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 
-export type DropzoneStatus = "idle" | "uploading" | "done" | "error";
+export type DropzoneStatus = "idle" | "previewing" | "uploading" | "done" | "error";
 
 export interface DropzoneProps {
   title: string; // 표시용 라벨(예: "process_data.csv")
@@ -57,10 +57,13 @@ export function Dropzone({ title, subLabel, status, fileName, errorMessage, onFi
         hidden
         onChange={(e) => handleFiles(e.target.files)}
       />
-      <div className="dz-icon">{filled ? "✓" : status === "uploading" ? "…" : "＋"}</div>
+      <div className="dz-icon">
+        {filled ? "✓" : status === "previewing" || status === "uploading" ? "…" : "＋"}
+      </div>
       <div className="dz-title">{fileName ?? title}</div>
       <div className="dz-sub">
-        {status === "uploading" && "업로드 중..."}
+        {status === "previewing" && "파일 확인 중... (아직 저장되지 않았습니다)"}
+        {status === "uploading" && "반영 중..."}
         {status === "idle" && subLabel}
         {status === "done" && subLabel}
         {status === "error" && (errorMessage ?? "업로드 실패")}

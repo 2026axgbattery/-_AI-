@@ -99,3 +99,22 @@ def test_compute_lot_derived_missing_fill_weight_is_null_not_error():
     assert result["water_loss_residual"] is None
     assert result["fill_per_rated"] is None
     assert result["formation_dv"] is not None  # fill_weight와 무관한 값은 그대로 계산됨
+
+
+def test_compute_lot_derived_zero_fill_weight_is_null_not_zero_division_error():
+    """fill_weight=0(센서/입력 오류로 인한 값, None이 아니라 유효한 float 0.0)도 missing_fill_weight
+    케이스와 동일하게 NULL로 처리해야 한다 — None 체크만으로는 못 막아 ZeroDivisionError로
+    업로드 전체가 500이 나던 버그(코드 리뷰로 발견, 2026-09-30)."""
+    row = {
+        "fill_weight": 0.0,
+        "water_loss": 5.0,
+        "rated_capacity": 50.0,
+        "charge_amount": 60.0,
+        "voltage_1st": 2.10,
+        "voltage_2nd": 2.15,
+    }
+    result = compute_lot_derived(row)
+
+    assert result["retention_rate"] is None
+    assert result["water_loss_rate"] is None
+    assert result["fill_per_rated"] == 0.0  # fill_weight가 분자일 뿐이라 0/rated_capacity는 정상 계산

@@ -6,7 +6,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from backend.analysis.cca_spec import judge_en_cca, judge_sae_cca
+from backend.analysis.cca_spec import (
+    aggregate_cca_pass_rates,
+    judge_en_cca,
+    judge_sae_cca,
+)
 from backend.analysis.derive import extract_buyer_code_from_model_name
 from backend.analysis.diagnosis import compute_factor_means, judge_spec, rank_causes
 from backend.analysis.regression import X_COLUMNS
@@ -22,20 +26,7 @@ def models_summary():
     conn = repo.get_connection()
     try:
         rows = repo.get_model_summary(conn)
-        cca_by_model: dict[str, dict] = {}
-        for c in repo.get_model_cca_checkpoints(conn):
-            agg = cca_by_model.setdefault(
-                c["model_name"],
-                {"en_cca_evaluated": 0, "en_cca_pass": 0, "sae_cca_evaluated": 0, "sae_cca_pass": 0},
-            )
-            en = judge_en_cca(c["en_cca_10s_voltage"], c["en_cca_6v_hold_sec"])
-            if en["result"] is not None:
-                agg["en_cca_evaluated"] += 1
-                agg["en_cca_pass"] += en["result"] == "pass"
-            sae = judge_sae_cca(c["sae_cca_7v2_hold_sec"])
-            if sae["result"] is not None:
-                agg["sae_cca_evaluated"] += 1
-                agg["sae_cca_pass"] += sae["result"] == "pass"
+        cca_by_model = aggregate_cca_pass_rates(repo.get_model_cca_checkpoints(conn), group_by="model_name")
 
         for row in rows:
             row["sample_sufficient"] = row["lot_count"] >= MIN_SAMPLE_SIZE_FOR_MODEL_DETAIL

@@ -1,7 +1,8 @@
 "use client";
 
 import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { CHART_COLORS } from "@/lib/chart-colors";
+import { CHART_COLORS, CHART_TOOLTIP_CURSOR_FILL } from "@/lib/chart-colors";
+import { IMPACT_DURATION_MS, IMPACT_EASING, usePrefersReducedMotion } from "@/lib/useMotion";
 import { ChartTooltipBox } from "./ChartTooltip";
 
 export interface CorrelationBarDatum {
@@ -36,6 +37,7 @@ function CorrelationTooltip({ active, payload }: { active?: boolean; payload?: {
  * `.docs/33`). 양(+)은 그린(주목할 만한 관계), 음(-)은 그레이로 표시하는 기존 색 관례를 그대로
  * 따른다 — 상관 부호 자체는 "좋고 나쁨"이 아니라서 오렌지/그린 동시강조 금지 규칙과는 무관. */
 export function CorrelationBarChart({ data }: { data: CorrelationBarDatum[] }) {
+  const reduceMotion = usePrefersReducedMotion();
   const rows: ChartRow[] = data.map((d) => ({
     ...d,
     absR: Math.abs(d.r),
@@ -55,8 +57,15 @@ export function CorrelationBarChart({ data }: { data: CorrelationBarDatum[] }) {
           axisLine={false}
           tick={{ fontSize: 12, fill: CHART_COLORS.textPrimary }}
         />
-        <Tooltip content={<CorrelationTooltip />} cursor={{ fill: "rgba(51,63,72,0.05)" }} />
-        <Bar dataKey="absR" radius={[4, 4, 4, 4]} maxBarSize={16} isAnimationActive={false}>
+        <Tooltip content={<CorrelationTooltip />} cursor={{ fill: CHART_TOOLTIP_CURSOR_FILL }} />
+        <Bar
+          dataKey="absR"
+          radius={[4, 4, 4, 4]}
+          maxBarSize={16}
+          isAnimationActive={!reduceMotion}
+          animationDuration={IMPACT_DURATION_MS}
+          animationEasing={IMPACT_EASING}
+        >
           {rows.map((d) => (
             <Cell key={d.key} fill={d.r < 0 ? CHART_COLORS.gray400 : CHART_COLORS.green700} />
           ))}

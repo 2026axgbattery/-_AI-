@@ -14,6 +14,8 @@ import {
   type YVsCcaPair,
 } from "@/lib/api-client";
 import { ccaSpecBadge } from "@/lib/cca-spec";
+import { fmt, fmtSigned } from "@/lib/format";
+import { useCountUp } from "@/lib/useMotion";
 import { RadialGauge } from "@/components/RadialGauge";
 import { CorrelationBarChart } from "@/components/charts/CorrelationBarChart";
 import { DivergingBarChart } from "@/components/charts/DivergingBarChart";
@@ -49,15 +51,6 @@ const X_COLUMN_LABELS: Record<string, string> = {
 
 function labelFor(col: string): string {
   return X_COLUMN_LABELS[col] ?? col;
-}
-
-function fmt(v: number | null | undefined, digits = 2): string {
-  if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return v.toFixed(digits);
-}
-
-function fmtSigned(v: number): string {
-  return `${v >= 0 ? "+" : ""}${v.toFixed(3)}`;
 }
 
 /** |r|이 얼마나 커야 "관계가 높다"고 볼 수 있는지에 대한 일반적인 통계 해석 기준(참고용).
@@ -122,7 +115,7 @@ function FactorMiniList({ factors, emptyText }: { factors: RankedFactor[]; empty
               {labelFor(f.col)} <span className="factor-mini-strength">· {f.strength}</span>
             </span>
             <span className={`factor-mini-r${f.significant ? " strong" : ""}`}>
-              {fmt(f.r)}
+              {fmt(f.r, 2)}
               {f.significant ? "" : "†"}
             </span>
           </div>
@@ -168,6 +161,11 @@ interface HeroMetric {
   sub: string;
   /** 0~100 비율 — 히어로 카드의 원형 게이지(RadialGauge) 채움값. null이면 빈 링만 표시. */
   gaugeValue: number | null;
+  /** Y/Z처럼 값이 단일 숫자 하나로 표시되는 카드만 채운다(.docs/35 — 결과가 로드될 때 0에서
+   * 실제 값까지 올라가는 카운트업 임팩트용). CCA처럼 "SAE X% · EN Y%" 합성 문자열인 카드는
+   * 단일 숫자가 아니라 애니메이션 대상에서 자연스럽게 제외된다(undefined). */
+  rawValue?: number | null;
+  rawValueSuffix?: string;
 }
 
 /** 히어로 지표 3개(Y/Z/CCA) 공용 톤 판정 — 실측 기준 미달이 있으면 warn, 판정 기준 자체가
@@ -175,6 +173,21 @@ interface HeroMetric {
 function metricTone(hasBasis: boolean, hasFail: boolean): Tone {
   if (!hasBasis) return "unknown";
   return hasFail ? "warn" : "ok";
+}
+
+/** 히어로 숫자 카드의 값 표시 — rawValue가 있으면(Y/Z) 0에서 실제 값까지 올라가는 카운트업
+ * 임팩트를 적용하고, 없으면(CCA 합성 문자열 등) 기존처럼 그냥 텍스트만 보여준다(.docs/35). */
+function HeroMetricValue({ metric }: { metric: HeroMetric }) {
+  const animated = useCountUp(metric.rawValue ?? null);
+  if (metric.rawValue == null || animated == null) {
+    return <>{metric.value}</>;
+  }
+  return (
+    <>
+      {animated.toFixed(1)}
+      {metric.rawValueSuffix}
+    </>
+  );
 }
 
 /** "스펙이 얼마인지" 자체를 보여달라는 요청(2026-09-27) — 형명마다 SPEC 하한이 다를 수 있어
@@ -225,6 +238,8 @@ function buildHeroVerdict(
       tone: metricTone(hasSpec, yFail > 0),
       sub: ySpecLabel ? `SPEC 하한 ${ySpecLabel} · 미달 ${yFail}건` : "데이터 없음",
       gaugeValue: kpi?.avg_retention_rate ?? null,
+      rawValue: kpi?.avg_retention_rate ?? null,
+      rawValueSuffix: "%",
     },
     {
       icon: "🔋",
@@ -233,6 +248,8 @@ function buildHeroVerdict(
       tone: metricTone(hasSpec, zFail > 0),
       sub: zSpecLabel ? `SPEC 하한 ${zSpecLabel} · 미달 ${zFail}건` : "데이터 없음",
       gaugeValue: kpi?.avg_capacity_rate ?? null,
+      rawValue: kpi?.avg_capacity_rate ?? null,
+      rawValueSuffix: "%",
     },
     {
       icon: "🧊",
@@ -250,10 +267,15 @@ function buildHeroVerdict(
   const anyWarn = metrics.some((m) => m.tone === "warn");
   const anyBasis = hasSpec || ccaHasBasis;
 
+  // 핵심 숫자(미달 건수)만 인라인 칩으로 강조 — 결과 문장 속에서도 눈에 바로 들어오도록
+  // 이미 정의만 돼 있던 .hero-num-chip(팝인 애니메이션 포함)을 실제로 연결한다(.docs/35).
   const followUp =
     totalFail > 0 ? (
       <span className="hero-desc-line hero-desc-sub">
-        포화도(Y) {yFail}건, 20시간 용량(Z) {zFail}건은 아래 카드에서 어떤 형명인지 확인하세요. ↓
+        포화도(Y){" "}
+        {yFail > 0 ? <span className="hero-num-chip warn">{yFail}건</span> : "0건"}, 20시간 용량(Z){" "}
+        {zFail > 0 ? <span className="hero-num-chip warn">{zFail}건</span> : "0건"}은 아래 카드에서
+        어떤 형명인지 확인하세요. ↓
       </span>
     ) : null;
 
@@ -308,7 +330,7 @@ function buildSpecCard(
 ): { tone: Tone; chip: string; value: string; desc: string } {
   if (!modelsWithSpec) {
     return {
-      tone: "unknown",
+      tone: metricTone(false, false),
       chip: "데이터 없음",
       value: "판정 불가",
       desc: `아직 업로드된 로트가 없어 ${metricLabel} 판정을 할 수 없습니다.`,
@@ -316,14 +338,14 @@ function buildSpecCard(
   }
   if (!fail) {
     return {
-      tone: "ok",
+      tone: metricTone(true, false),
       chip: "정상",
       value: "기준 충족",
       desc: `SPEC이 설정된 형명 전량(${evaluated ?? 0}건)이 ${metricLabel} 기준을 충족했습니다.`,
     };
   }
   return {
-    tone: "warn",
+    tone: metricTone(true, true),
     chip: "확인 필요",
     value: `${fail}건 미달`,
     desc: `평가 대상 ${evaluated ?? 0}건 중 ${fail}건이 ${metricLabel} 기준에 못 미칩니다.`,
@@ -331,7 +353,10 @@ function buildSpecCard(
 }
 
 /** 검증·채점 카드용 — 4개 target 중 가장 낮은 일치율을 대표값으로 보여준다(약한 고리 기준). */
-function buildScoringCard(scoring: Partial<Record<ScoringTarget, ScoringRunResult>>): {
+function buildScoringCard(
+  scoring: Partial<Record<ScoringTarget, ScoringRunResult>>,
+  scoringRunning: boolean
+): {
   tone: Tone;
   chip: string;
   value: string;
@@ -340,6 +365,9 @@ function buildScoringCard(scoring: Partial<Record<ScoringTarget, ScoringRunResul
   const entries = SCORING_TARGETS.map(({ key }) => scoring[key]).filter(
     (r): r is ScoringRunResult => !!r
   );
+  if (scoringRunning) {
+    return { tone: "unknown", chip: "채점 중...", value: "—", desc: "방금 반영된 결과로 채점을 실행하고 있습니다." };
+  }
   if (entries.length === 0) {
     return { tone: "unknown", chip: "미채점", value: "—", desc: "아직 채점을 실행한 적이 없습니다." };
   }
@@ -389,35 +417,45 @@ export default function DashboardPage() {
   const [scoringRunning, setScoringRunning] = useState(false);
 
   const refresh = useCallback(async () => {
-    const kpiData = await apiClient.getKpi().catch(() => null);
+    // 아래 6개 요청군은 서로 다른 state를 채우는 독립적인 조회라 순서를 기다릴 이유가 없다
+    // (기존에는 전부 순차 await라 로컬 백엔드 왕복이라도 화면 로드마다 불필요하게 누적됐다).
+    const stages: Stage[] = ["x_to_y", "xy_to_z", "x_to_z_baseline"];
+    const ccaStages: CcaStage[] = ["xy_to_sae_cca", "xy_to_en_cca"];
+
+    const [kpiData, specData, stageResults, ccaStageResults, ccaPairs, scoringResults] = await Promise.all([
+      apiClient.getKpi().catch(() => null),
+      apiClient.getSpecCompliance().catch(() => null),
+      Promise.all(stages.map((stage) => apiClient.getLatestAnalysis(stage).catch(() => null))),
+      Promise.all(ccaStages.map((stage) => apiClient.getLatestAnalysis(stage).catch(() => null))),
+      apiClient.getYVsCca({ limit: WORST_CCA_LIMIT, sort: "worst" }).catch(() => null),
+      Promise.all(SCORING_TARGETS.map(({ key }) => apiClient.getLatestScoring(key).catch(() => null))),
+    ]);
+
     setKpi(kpiData);
-    const specData = await apiClient.getSpecCompliance().catch(() => null);
     setSpecCompliance(specData);
 
-    const stages: Stage[] = ["x_to_y", "xy_to_z", "x_to_z_baseline"];
     const next: Partial<Record<Stage, AnalysisRunResult>> = {};
-    for (const stage of stages) {
-      const result = await apiClient.getLatestAnalysis(stage).catch(() => null);
+    stages.forEach((stage, i) => {
+      const result = stageResults[i];
       if (result) next[stage] = result;
-    }
+    });
     setResults(next);
 
-    const ccaStages: CcaStage[] = ["xy_to_sae_cca", "xy_to_en_cca"];
     const nextCca: Partial<Record<CcaStage, AnalysisRunResult>> = {};
-    for (const stage of ccaStages) {
-      const result = await apiClient.getLatestAnalysis(stage).catch(() => null);
+    ccaStages.forEach((stage, i) => {
+      const result = ccaStageResults[i];
       if (result) nextCca[stage] = result;
-    }
+    });
     setCcaResults(nextCca);
-    const ccaPairs = await apiClient.getYVsCca({ limit: WORST_CCA_LIMIT, sort: "worst" }).catch(() => null);
+
     setYVsCca(ccaPairs?.pairs ?? []);
     setYVsCcaTotal(ccaPairs?.total_count ?? 0);
 
     const nextScoring: Partial<Record<ScoringTarget, ScoringRunResult>> = {};
-    for (const { key } of SCORING_TARGETS) {
-      const result = await apiClient.getLatestScoring(key).catch(() => null);
+    SCORING_TARGETS.forEach(({ key }, i) => {
+      const result = scoringResults[i];
       if (result) nextScoring[key] = result;
-    }
+    });
     setScoring(nextScoring);
 
     setLoaded(true);
@@ -426,15 +464,17 @@ export default function DashboardPage() {
   /** target 4종을 전부 채점 — "다시 채점" 버튼과 분석 실행 직후 둘 다에서 재사용한다(분석을 막
    * 실행한 직후에는 채점 이력이 아직 없어 "검증 신뢰도" 카드가 계속 "미채점"으로 보였던 문제 수정). */
   const runScoringAll = useCallback(async () => {
+    // 4개 target은 서로 독립적인 학습·채점이라 동시에 실행한다(기존 순차 for-loop는
+    // 자동 채점 체감 속도를 불필요하게 늦췄다).
+    const settled = await Promise.allSettled(SCORING_TARGETS.map(({ key }) => apiClient.runScoring(key)));
     const next: Partial<Record<ScoringTarget, ScoringRunResult>> = {};
-    for (const { key } of SCORING_TARGETS) {
-      try {
-        next[key] = await apiClient.runScoring(key);
-      } catch {
-        // 무시 — 표본 부족·판정불가는 결과의 note/reliable 필드로 이미 정직하게 표현됨.
-        // 여기서 잡는 예외는 네트워크 오류 등 그 외의 경우뿐.
+    settled.forEach((result, i) => {
+      // rejected(네트워크 오류 등)는 무시 — 표본 부족·판정불가는 이미 결과의
+      // note/reliable 필드로 정직하게 표현되므로 정상 응답이면 항상 fulfilled다.
+      if (result.status === "fulfilled") {
+        next[SCORING_TARGETS[i].key] = result.value;
       }
-    }
+    });
     setScoring((prev) => ({ ...prev, ...next }));
   }, []);
 
@@ -472,15 +512,35 @@ export default function DashboardPage() {
     setRunning(true);
     setError(null);
     try {
-      await apiClient.runXToY();
-      await apiClient.runXyToZ();
-      await apiClient.runXToZBaseline();
+      // 세 회귀는 서로의 결과를 입력으로 쓰지 않고 각자 DB에서 학습 데이터를 직접 조회한다
+      // (backend/routers/dashboard.py의 x_to_y/xy_to_z/x_to_z_baseline 매핑 참조) — 순차 대기할
+      // 이유가 없어 동시에 실행한다. allSettled를 써서 한 단계(예: 시험 매칭 표본 부족으로
+      // xy_to_z가 400)가 실패해도 나머지 결과 반영과 아래 자동 채점이 막히지 않게 한다
+      // (기존 Promise.all + 단일 catch 구조에서는 회귀 하나만 실패해도 refresh()·runScoringAll()이
+      // 아예 실행되지 않아 "검증 신뢰도" 카드가 계속 미채점으로 남는 버그가 있었음).
+      const settled = await Promise.allSettled([
+        apiClient.runXToY(),
+        apiClient.runXyToZ(),
+        apiClient.runXToZBaseline(),
+      ]);
+      const failed = settled.filter(
+        (r): r is PromiseRejectedResult => r.status === "rejected"
+      );
+      if (failed.length > 0) {
+        setError(
+          failed
+            .map((r) => (r.reason instanceof ApiError ? String(r.reason.detail) : "분석 실행 중 오류가 발생했습니다."))
+            .join(" / ")
+        );
+      }
       await refresh();
+      setScoringRunning(true);
       await runScoringAll();
     } catch (e) {
       setError(e instanceof ApiError ? String(e.detail) : "분석 실행 중 오류가 발생했습니다.");
     } finally {
       setRunning(false);
+      setScoringRunning(false);
     }
   }
 
@@ -523,7 +583,7 @@ export default function DashboardPage() {
   const zCard = buildSpecCard("20시간 용량(Z)", specCompliance?.z_fail, specCompliance?.z_evaluated, specCompliance?.models_with_spec);
   const yRankedFactors = rankFactorsByCorrelation(xToY);
   const zRankedFactors = rankFactorsByCorrelation(xyToZ, ["retention_rate"]);
-  const scoringCard = buildScoringCard(scoring);
+  const scoringCard = buildScoringCard(scoring, scoringRunning);
 
   return (
     <div className="app">
@@ -587,7 +647,9 @@ export default function DashboardPage() {
                     <div className="hero-metric-body">
                       <RadialGauge value={m.gaugeValue !== null ? Math.min(m.gaugeValue, 100) : null} />
                       <div>
-                        <div className="hero-metric-value">{m.value}</div>
+                        <div className="hero-metric-value">
+                          <HeroMetricValue metric={m} />
+                        </div>
                         <div className="hero-metric-sub">{m.sub}</div>
                       </div>
                     </div>
@@ -1052,17 +1114,19 @@ export default function DashboardPage() {
           <div className="evidence-body" id="scoring-detail">
             <div className="card">
               <p style={{ margin: "0 0 var(--space-4)", fontSize: "0.875rem", lineHeight: 1.6 }}>
-                시험 매칭 로트(실측값이 있는 로트) 전체로 회귀를 다시 학습해, 그 로트들에 대해 예측한
-                SPEC 판정이 실측 SPEC 판정과 같은지 비교합니다. 데이터를 새로 업로드한 뒤{" "}
+                시험 매칭 로트(실측값이 있는 로트)를 <b>학습(train) 80% · 검증(val) 20%</b>로 나눠,
+                학습에 쓰지 않은 val 로트에 대해서만 예측 SPEC 판정이 실측 SPEC 판정과 같은지
+                비교합니다(.docs/35, 2026-09-30 도입). 데이터를 새로 업로드한 뒤{" "}
                 <b>&ldquo;다시 채점&rdquo;</b>을 누르면 지금 들어있는 데이터 기준으로 재계산됩니다.
-                (학습에 쓴 로트를 그대로 다시 채점하는 방식이라 참고용 자가진단이며, 정식 검증은 v2
-                예정입니다.)
+                표본이 분할하기에 너무 적으면(대상별 최소 표본 미달) 학습에 쓴 로트를 그대로
+                다시 채점하는 <b>참고용 in-sample</b> 방식으로 정직하게 대체하고 아래 배지로 표시합니다.
               </p>
 
               <table style={{ marginBottom: "var(--space-4)" }}>
                 <thead>
                   <tr>
                     <th>대상</th>
+                    <th>검증 방식</th>
                     <th>대상 건수</th>
                     <th>일치율</th>
                     <th>신뢰 가능?</th>
@@ -1076,9 +1140,23 @@ export default function DashboardPage() {
                       r?.reliable === true ? "pass" : r?.reliable === false ? "fail" : "unknown";
                     const badgeLabel =
                       r?.reliable === true ? "신뢰 가능" : r?.reliable === false ? "미달" : "판정 불가";
+                    const isHoldout = r?.validation_mode === "holdout";
                     return (
                       <tr key={key}>
                         <td>{label}</td>
+                        <td>
+                          {r ? (
+                            <span className={`status-chip ${isHoldout ? "ok" : "unknown"}`} title={
+                              isHoldout
+                                ? `학습 ${r.train_n}건 · 검증(미학습) ${r.val_n}건`
+                                : "표본 부족으로 학습 로트를 그대로 다시 채점"
+                            }>
+                              {isHoldout ? `홀드아웃(val ${r.val_n}건)` : "in-sample"}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                         <td>{r ? `${r.n_scorable} / ${r.n_total}` : "—"}</td>
                         <td>{r?.success_rate_pct !== null && r?.success_rate_pct !== undefined ? `${r.success_rate_pct.toFixed(1)}%` : "—"}</td>
                         <td>

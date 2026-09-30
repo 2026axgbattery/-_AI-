@@ -129,6 +129,51 @@ def test_score_sae_cca_spec_matches_on_clean_linear_data():
     assert result["n_mismatched"] == 0
 
 
+def test_score_y_falls_back_to_in_sample_when_too_few_for_holdout():
+    """n=13은 회귀 최소 표본(11) 언저리라 80/20 분할하면 train이 11 미만이 된다 — 분할 자체를
+    포기하고 지금까지처럼 in-sample로 채점해야 한다(.docs/35 폴백 경로)."""
+    rows = _rows(13)
+    result = scoring.score_target("y", rows)
+    assert result["validation_mode"] == "in_sample"
+    assert result["val_n"] == 13
+    assert result["train_n"] == 13
+    assert result["note"] is not None
+
+
+def test_score_y_uses_real_holdout_when_sample_is_large_enough():
+    """n=30이면 train(24)이 회귀 최소 표본(11)을 넉넉히 넘고 val(6)도 최소 표본(5) 이상이라
+    실제로 홀드아웃 분할이 적용돼야 한다 — val로 채점된 로트는 train에 전혀 없어야 한다."""
+    rows = _rows(30)
+    result = scoring.score_target("y", rows)
+    assert result["validation_mode"] == "holdout"
+    assert result["train_n"] + result["val_n"] == 30
+    assert result["val_n"] >= 5
+    assert result["note"] is None
+
+    val_lot_ids = {r["lot_id"] for r in result["results"]}
+    assert len(val_lot_ids) == result["val_n"]
+
+
+def test_score_y_holdout_split_is_deterministic():
+    """같은 입력이면 같은 시드로 항상 같은 val 집합이 나와야 한다(docs/prd.md §9 재현성)."""
+    rows = _rows(30)
+    result1 = scoring.score_target("y", rows)
+    result2 = scoring.score_target("y", rows)
+    val_ids1 = {r["lot_id"] for r in result1["results"]}
+    val_ids2 = {r["lot_id"] for r in result2["results"]}
+    assert val_ids1 == val_ids2
+
+
+def test_score_z_and_cca_targets_use_holdout_with_large_sample():
+    rows = _rows(40)
+    for target in ("z", "en_cca_spec", "sae_cca_spec"):
+        result = scoring.score_target(target, rows)
+        assert result["validation_mode"] == "holdout", target
+        assert result["train_n"] + result["val_n"] == 40, target
+        val_lot_ids = {r["lot_id"] for r in result["results"]}
+        assert len(val_lot_ids) == result["val_n"], target
+
+
 def test_score_target_rejects_unknown_target():
     try:
         scoring.score_target("bogus", [])

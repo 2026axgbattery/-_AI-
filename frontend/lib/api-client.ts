@@ -1,12 +1,21 @@
-// FastAPI 호출 wrapper. 항상 127.0.0.1의 로컬 백엔드만 바라본다(외부 origin 프록시 없음,
-// .docs/02_nextjs-fastapi-구현-아키텍처.md §4).
-const API_BASE_URL = "http://127.0.0.1:8000";
+// FastAPI 호출 wrapper. 기본은 127.0.0.1 로컬 백엔드(.docs/02 §4)이며,
+// NEXT_PUBLIC_API_BASE_URL 환경변수로 외부 배포 백엔드 주소를 지정할 수 있다
+// (심사용 외부 배포 전환, .docs/37 참조 — 미설정 시 기존과 동일하게 로컬만 바라봄).
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail: unknown;
     try {
-      detail = await res.json();
+      const body: unknown = await res.json();
+      // FastAPI는 에러 본문을 항상 {"detail": ...} 봉투로 감싼다 — 호출부(dashboard/prediction/
+      // upload 페이지)는 전부 그 안쪽 값(문자열 또는 {missing_columns: [...]} 같은 객체)을
+      // ApiError.detail로 기대하므로 여기서 한 번 벗겨내야 한다. 봉투 형태가 아니면 본문 그대로 사용.
+      detail =
+        body !== null && typeof body === "object" && "detail" in body
+          ? (body as { detail: unknown }).detail
+          : body;
     } catch {
       detail = await res.text();
     }
@@ -33,6 +42,10 @@ export interface UploadResult {
   inserted_process_rows?: number;
   inserted_test_rows?: number;
   skipped_unknown_lot?: string[];
+  /** 필수 항목 누락·model_name 파싱 실패 등으로 건너뛴 행(.docs/35 미리보기 요약에도 그대로 씀). */
+  skipped_invalid_rows?: { lot_id: string | null; reason: string }[];
+  /** true면 dry_run=true로 호출한 미리보기 응답 — 실제로는 아무것도 저장되지 않았다. */
+  preview?: boolean;
 }
 
 export interface UploadSummary {
@@ -329,23 +342,30 @@ export interface ScoringRunResult {
   note?: string | null;
   results?: ScoringResultRow[];
   mismatched_lots: ScoringResultRow[];
+  /** "holdout"이면 val_n건은 train_n건 학습에 전혀 쓰이지 않은 표본으로만 채점한 것(.docs/35,
+   * 2026-09-30 v2 착수) — "in_sample"(표본 부족 폴백)이면 학습에 쓴 행을 그대로 다시 채점한 것. */
+  validation_mode?: "holdout" | "in_sample";
+  train_n?: number;
+  val_n?: number;
 }
 
 export const apiClient = {
   health: () => fetch(`${API_BASE_URL}/api/health`).then((r) => handle<{ status: string }>(r)),
 
-  uploadProcessCsv: (file: File) => {
+  uploadProcessCsv: (file: File, opts?: { dryRun?: boolean }) => {
     const form = new FormData();
     form.append("file", file);
-    return fetch(`${API_BASE_URL}/api/upload/process`, { method: "POST", body: form }).then((r) =>
+    const qs = opts?.dryRun ? "?dry_run=true" : "";
+    return fetch(`${API_BASE_URL}/api/upload/process${qs}`, { method: "POST", body: form }).then((r) =>
       handle<UploadResult>(r)
     );
   },
 
-  uploadTestCsv: (file: File) => {
+  uploadTestCsv: (file: File, opts?: { dryRun?: boolean }) => {
     const form = new FormData();
     form.append("file", file);
-    return fetch(`${API_BASE_URL}/api/upload/test`, { method: "POST", body: form }).then((r) =>
+    const qs = opts?.dryRun ? "?dry_run=true" : "";
+    return fetch(`${API_BASE_URL}/api/upload/test${qs}`, { method: "POST", body: form }).then((r) =>
       handle<UploadResult>(r)
     );
   },

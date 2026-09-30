@@ -4,14 +4,11 @@ import { useEffect, useState } from "react";
 import { TopBar } from "@/components/TopBar";
 import { apiClient, type YVsCcaPair } from "@/lib/api-client";
 import { ccaSpecBadge } from "@/lib/cca-spec";
+import { fmt } from "@/lib/format";
 
 // 전체 raw data를 페이지네이션 없이 한 번에 받기 위한 상한 — `detail-analysis/lots/[model]`의
 // FULL_VIEW_LIMIT과 동일한 관례(2,000건 초과 시 표 렌더링이 느려지고 찌그러져 보일 수 있음).
 const FULL_VIEW_LIMIT = 2000;
-
-function fmt(v: number | null, digits = 3): string {
-  return v === null ? "—" : v.toFixed(digits);
-}
 
 export default function YVsCcaFullPage() {
   const [pairs, setPairs] = useState<YVsCcaPair[]>([]);
@@ -76,11 +73,11 @@ export default function YVsCcaFullPage() {
                       <td className="cell-lot">{p.lot_id}</td>
                       <td>{p.model_name}</td>
                       <td>{p.retention_rate.toFixed(1)}%</td>
-                      <td>{fmt(p.sae_cca)}</td>
+                      <td>{fmt(p.sae_cca, 3)}</td>
                       <td>
                         <span className={`status-pill ${saeBadge.tone}`}>{saeBadge.label}</span>
                       </td>
-                      <td>{fmt(p.en_cca)}</td>
+                      <td>{fmt(p.en_cca, 3)}</td>
                       <td>
                         <span className={`status-pill ${enBadge.tone}`}>{enBadge.label}</span>
                       </td>

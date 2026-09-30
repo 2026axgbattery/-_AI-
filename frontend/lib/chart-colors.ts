@@ -24,3 +24,7 @@ export const STATUS_COLORS = {
   fail: CHART_COLORS.orange,
   unknown: CHART_COLORS.gray400,
 } as const;
+
+/** Recharts `<Tooltip cursor={{ fill: ... }}>` 호버 배경 — darkGray(#333F48)의 5% 알파를 손으로
+ * 계산해 3개 차트 컴포넌트에 각각 하드코딩하고 있던 것. 팔레트가 바뀌면 여기 한 곳만 고치면 됨. */
+export const CHART_TOOLTIP_CURSOR_FILL = "rgba(51,63,72,0.05)";

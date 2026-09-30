@@ -99,21 +99,48 @@ def create_upload_batch(conn: sqlite3.Connection, file_type: str, filename: str,
     return cursor.lastrowid
 
 
-def ingest_process_rows(conn: sqlite3.Connection, rows: list[dict], filename: str = "process_data.csv") -> dict:
-    """process_data.csv 행들을 Lot+ProcessData에 반영하고, LotDerived까지 계산한다."""
+def ingest_process_rows(
+    conn: sqlite3.Connection, rows: list[dict], filename: str = "process_data.csv", dry_run: bool = False
+) -> dict:
+    """process_data.csv 행들을 Lot+ProcessData에 반영하고, LotDerived까지 계산한다.
+
+    `dry_run=True`이면 실제 파싱·검증·INSERT를 전부 그대로 수행하되 마지막에 commit 대신
+    rollback해 아무것도 저장하지 않는다(.docs/35) — "이 파일을 이렇게 해석했습니다, 반영할까요?"
+    미리보기 화면이 별도 파서 없이 실제 반영 로직과 100% 동일한 결과를 보여주기 위함이다."""
     inserted_lots = 0
     duplicate_lot_ids: list[str] = []
     inserted_process_rows = 0
+    skipped_invalid_rows: list[dict] = []
     batch_id = create_upload_batch(conn, "process", filename, len(rows))
 
-    for raw in rows:
-        lot_id = raw["lot_id"].strip()
-        model_name = raw["model_name"].strip()
-        prod_date = raw["prod_date"].strip()
-        rated_capacity = parse_rated_capacity_from_model_name(model_name)
+    # 대량 업로드(수천~수만 행)에서 행마다 "중복 lot_id인지" SELECT + 충전 프로그램 매칭 SELECT를
+    # 최대 2번씩 날리면 3N번의 쿼리가 나간다 — 기존 lot_id는 한 번에 메모리로 올리고(집합),
+    # 충전 프로그램은 작은 참조 테이블이라 통째로 딕셔너리로 올려 O(1) 조회로 바꾼다.
+    existing_lot_ids = {r["lot_id"] for r in conn.execute("SELECT lot_id FROM Lot").fetchall()}
+    charge_program_lookup = build_charge_program_lookup(conn)
 
-        existing = conn.execute("SELECT 1 FROM Lot WHERE lot_id = ?", (lot_id,)).fetchone()
-        if existing:
+    for raw in rows:
+        # 헤더보다 짧은/빈 셀이 있는 행은 csv.DictReader가 None을 채워 넣을 수 있다 — .strip()을
+        # 그대로 호출하면 AttributeError로 배치 전체가 죽으므로 먼저 문자열로 정규화한다.
+        lot_id = (raw.get("lot_id") or "").strip()
+        model_name = (raw.get("model_name") or "").strip()
+        prod_date = (raw.get("prod_date") or "").strip()
+        if not lot_id or not model_name or not prod_date:
+            skipped_invalid_rows.append({
+                "lot_id": lot_id or None,
+                "reason": "필수 항목(lot_id/model_name/prod_date) 누락",
+            })
+            continue
+        try:
+            rated_capacity = parse_rated_capacity_from_model_name(model_name)
+        except ValueError:
+            skipped_invalid_rows.append({
+                "lot_id": lot_id,
+                "reason": f"model_name에서 정격용량을 추출할 수 없음: {model_name!r}",
+            })
+            continue
+
+        if lot_id in existing_lot_ids:
             duplicate_lot_ids.append(lot_id)
         else:
             conn.execute(
@@ -121,6 +148,7 @@ def ingest_process_rows(conn: sqlite3.Connection, rows: list[dict], filename: st
                 "VALUES (?, ?, ?, ?, ?)",
                 (lot_id, model_name, rated_capacity, raw.get("line_no"), prod_date),
             )
+            existing_lot_ids.add(lot_id)  # 같은 배치 안 중복 lot_id도 이후 행에서 잡아내야 함
             inserted_lots += 1
 
         process_values = {col: _to_float(raw.get(col)) for col in PROCESS_DATA_COLUMNS
@@ -137,7 +165,9 @@ def ingest_process_rows(conn: sqlite3.Connection, rows: list[dict], filename: st
         inserted_process_rows += 1
 
         buyer_code = extract_buyer_code_from_model_name(model_name)
-        charge_program_total_ah = get_active_charge_program_total_ah(conn, rated_capacity, buyer_code)
+        charge_program_total_ah = lookup_charge_program_total_ah(
+            charge_program_lookup, rated_capacity, buyer_code
+        )
         derived_input = {
             "fill_weight": process_values["fill_weight"],
             "water_loss": process_values["water_loss"],
@@ -150,23 +180,33 @@ def ingest_process_rows(conn: sqlite3.Connection, rows: list[dict], filename: st
         }
         upsert_lot_derived(conn, lot_id, derived_input)
 
-    conn.commit()
+    if dry_run:
+        conn.rollback()
+    else:
+        conn.commit()
     return {
         "batch_id": batch_id,
         "inserted_lots": inserted_lots,
         "duplicate_lot_ids": duplicate_lot_ids,
         "inserted_process_rows": inserted_process_rows,
+        "skipped_invalid_rows": skipped_invalid_rows,
+        "preview": dry_run,
     }
 
 
-def ingest_test_rows(conn: sqlite3.Connection, rows: list[dict], filename: str = "test_data.csv") -> dict:
+def ingest_test_rows(
+    conn: sqlite3.Connection, rows: list[dict], filename: str = "test_data.csv", dry_run: bool = False
+) -> dict:
+    """`dry_run` 의미는 `ingest_process_rows`와 동일(.docs/35)."""
     inserted = 0
     skipped_unknown_lot: list[str] = []
     batch_id = create_upload_batch(conn, "test", filename, len(rows))
 
     for raw in rows:
-        lot_id = raw["lot_id"].strip()
-        lot_exists = conn.execute("SELECT 1 FROM Lot WHERE lot_id = ?", (lot_id,)).fetchone()
+        lot_id = (raw.get("lot_id") or "").strip()
+        lot_exists = bool(lot_id) and conn.execute(
+            "SELECT 1 FROM Lot WHERE lot_id = ?", (lot_id,)
+        ).fetchone()
         if not lot_exists:
             # test_data.csv는 process_data.csv lot_id의 부분집합이 정상(docs/prd.md 더미 데이터 유의사항).
             # 그렇지 않은 lot_id는 FK 제약 위반을 막기 위해 건너뛰고 경고로만 알린다.
@@ -182,8 +222,16 @@ def ingest_test_rows(conn: sqlite3.Connection, rows: list[dict], filename: str =
         )
         inserted += 1
 
-    conn.commit()
-    return {"batch_id": batch_id, "inserted_test_rows": inserted, "skipped_unknown_lot": skipped_unknown_lot}
+    if dry_run:
+        conn.rollback()
+    else:
+        conn.commit()
+    return {
+        "batch_id": batch_id,
+        "inserted_test_rows": inserted,
+        "skipped_unknown_lot": skipped_unknown_lot,
+        "preview": dry_run,
+    }
 
 
 def get_active_charge_program_total_ah(
@@ -207,6 +255,33 @@ def get_active_charge_program_total_ah(
         if row is not None and row["total_charge_ah"] is not None:
             return row["total_charge_ah"]
     return None
+
+
+def build_charge_program_lookup(conn: sqlite3.Connection) -> dict[tuple[float, str], float]:
+    """`get_active_charge_program_total_ah`와 동일한 (정격용량, 바이어 코드) 매칭 규칙을
+    메모리 딕셔너리로 미리 구축한다 — `ChargeProgramSpec`은 형명×바이어 조합 수준의 작은
+    참조 테이블이라 통째로 로드해도 부담이 없다. 대량 행(수천~수만 건) 업로드/재계산에서
+    행마다 SELECT를 최대 2번씩 날리는 대신, 이 딕셔너리 하나로 O(1) 조회한다."""
+    lookup: dict[tuple[float, str], float] = {}
+    rows = conn.execute(
+        "SELECT rated_capacity, buyer_code, total_charge_ah FROM ChargeProgramSpec "
+        "WHERE total_charge_ah IS NOT NULL ORDER BY is_variant ASC, id ASC"
+    ).fetchall()
+    for r in rows:
+        key = (r["rated_capacity"], r["buyer_code"])
+        if key not in lookup:  # is_variant ASC 순서라 먼저 채워진 값(기본 버전)이 우선 유지됨
+            lookup[key] = r["total_charge_ah"]
+    return lookup
+
+
+def lookup_charge_program_total_ah(
+    lookup: dict[tuple[float, str], float], rated_capacity: float, buyer_code: str | None
+) -> float | None:
+    if buyer_code is None:
+        return None
+    if (rated_capacity, buyer_code) in lookup:
+        return lookup[(rated_capacity, buyer_code)]
+    return lookup.get((rated_capacity, "All"))
 
 
 def replace_charge_program_specs(
@@ -257,12 +332,13 @@ def recompute_all_lot_derived(conn: sqlite3.Connection) -> dict:
         FROM Lot l JOIN ProcessData p ON p.lot_id = l.lot_id
         """
     ).fetchall()
+    charge_program_lookup = build_charge_program_lookup(conn)
     updated = 0
     for lot in lots:
         row = dict(lot)
         buyer_code = extract_buyer_code_from_model_name(row["model_name"])
-        charge_program_total_ah = get_active_charge_program_total_ah(
-            conn, row["rated_capacity"], buyer_code
+        charge_program_total_ah = lookup_charge_program_total_ah(
+            charge_program_lookup, row["rated_capacity"], buyer_code
         )
         derived_input = {
             "fill_weight": row["fill_weight"],
@@ -408,28 +484,35 @@ def batch_update_manual_field(
     if field not in MANUAL_FIELDS:
         raise ValueError(f"지원하지 않는 수기입력 항목입니다: {field}")
     group_keys = MANUAL_FIELDS[field]
+    missing_keys = [k for k in group_keys if k not in group_values]
+    if missing_keys:
+        raise ValueError(f"group_values에 필요한 키가 없습니다: {missing_keys}")
     where_group = " AND ".join(f"l.{k} = ?" for k in group_keys)
     params = [group_values[k] for k in group_keys]
     null_filter = "" if overwrite else f" AND p.{field} IS NULL"
 
-    # ProcessData는 append-only라 같은 lot_id가 여러 행을 가질 수 있어 SELECT DISTINCT로
-    # 중복을 제거한다(중복이 남으면 아래 UPDATE는 idempotent해 무해하지만, LotDerived 재계산
-    # 루프가 같은 로트를 불필요하게 여러 번 처리하게 된다).
-    target_lot_ids = [
-        r["lot_id"]
-        for r in conn.execute(
-            f"""
-            SELECT DISTINCT p.lot_id FROM ProcessData p JOIN Lot l ON l.lot_id = p.lot_id
-            WHERE {where_group}{null_filter}
-            """,
-            params,
-        ).fetchall()
-    ]
-    if target_lot_ids:
-        placeholders = ", ".join(["?"] * len(target_lot_ids))
+    # ProcessData는 append-only라 같은 lot_id가 여러 행을 가질 수 있다 — 로트당 최신 행(id
+    # 최댓값)만 선택·갱신 대상으로 삼는다(get_manual_fields_status/get_manual_field_groups와
+    # 동일한 패턴). 과거 행까지 포함하면 최신 행에 이미 값이 있어도 옛 행이 NULL이라는
+    # 이유로 overwrite=False를 어기고 선택되거나, 최신 행이 옛 행 값으로 덮여쓰일 수 있다.
+    target_rows = conn.execute(
+        f"""
+        SELECT p.id AS process_id, p.lot_id
+        FROM ProcessData p
+        JOIN (SELECT lot_id, MAX(id) AS latest_id FROM ProcessData GROUP BY lot_id) latest
+          ON latest.latest_id = p.id
+        JOIN Lot l ON l.lot_id = p.lot_id
+        WHERE {where_group}{null_filter}
+        """,
+        params,
+    ).fetchall()
+    target_process_ids = [r["process_id"] for r in target_rows]
+    target_lot_ids = [r["lot_id"] for r in target_rows]
+    if target_process_ids:
+        placeholders = ", ".join(["?"] * len(target_process_ids))
         conn.execute(
-            f"UPDATE ProcessData SET {field} = ? WHERE lot_id IN ({placeholders})",
-            [value, *target_lot_ids],
+            f"UPDATE ProcessData SET {field} = ? WHERE id IN ({placeholders})",
+            [value, *target_process_ids],
         )
         # electrolyte_temp/tank_temp는 LotDerived 파생값 계산식에 쓰이지 않으므로(§6-③ 산출식
         # 참조) 재계산이 필요 없다 — charge_amount(파생값에 쓰임)가 그룹 일괄 입력 대상이던
@@ -448,13 +531,21 @@ def upsert_spec_thresholds(conn: sqlite3.Connection, rows: list[dict]) -> dict:
     `config.spec_thresholds`)이 대신 적용된다.
     """
     updated_models: list[str] = []
+    skipped_models: list[dict] = []
     for raw in rows:
-        model_name = raw["model_name"].strip()
+        model_name = (raw.get("model_name") or "").strip()
         if not model_name:
             continue
         rated_capacity = _to_float(raw.get("rated_capacity"))
         if rated_capacity is None:
-            rated_capacity = parse_rated_capacity_from_model_name(model_name)
+            try:
+                rated_capacity = parse_rated_capacity_from_model_name(model_name)
+            except ValueError:
+                skipped_models.append({
+                    "model_name": model_name,
+                    "reason": "rated_capacity가 비어 있고 model_name에서도 추출할 수 없음",
+                })
+                continue
         spec_lower_y = _to_float(raw.get("spec_lower_y"))
         spec_lower_z = _to_float(raw.get("spec_lower_z"))
 
@@ -471,7 +562,7 @@ def upsert_spec_thresholds(conn: sqlite3.Connection, rows: list[dict]) -> dict:
         )
         updated_models.append(model_name)
     conn.commit()
-    return {"updated_models": updated_models}
+    return {"updated_models": updated_models, "skipped_models": skipped_models}
 
 
 def get_spec_thresholds(conn: sqlite3.Connection) -> list[dict]:
@@ -492,14 +583,18 @@ def get_upload_batches(conn: sqlite3.Connection) -> list[dict]:
         "SELECT batch_id, file_type, filename, row_count, uploaded_at FROM UploadBatch "
         "ORDER BY uploaded_at DESC, batch_id DESC"
     ).fetchall()
+    # 배치마다 COUNT(*) 쿼리를 한 번씩 날리던 것(N+1)을 테이블당 GROUP BY 한 번씩(총 2번)으로 교체.
+    remaining_by_batch: dict[int, int] = {}
+    for table in ("ProcessData", "TestData"):
+        for r in conn.execute(
+            f"SELECT upload_batch_id, COUNT(*) AS n FROM {table} GROUP BY upload_batch_id"
+        ).fetchall():
+            remaining_by_batch[r["upload_batch_id"]] = r["n"]
+
     result = []
     for r in rows:
         row = dict(r)
-        table = "ProcessData" if row["file_type"] == "process" else "TestData"
-        remaining = conn.execute(
-            f"SELECT COUNT(*) AS n FROM {table} WHERE upload_batch_id = ?", (row["batch_id"],)
-        ).fetchone()["n"]
-        row["remaining_row_count"] = remaining
+        row["remaining_row_count"] = remaining_by_batch.get(row["batch_id"], 0)
         result.append(row)
     return result
 
@@ -561,29 +656,50 @@ def delete_upload_batch(conn: sqlite3.Connection, batch_id: int) -> dict:
                 "SELECT lot_id FROM affected_lots WHERE lot_id NOT IN (SELECT lot_id FROM orphan_lots)"
             ).fetchall()
         ]
-        for lot_id in remaining_lot_ids:
-            remaining = conn.execute(
-                "SELECT * FROM ProcessData WHERE lot_id = ? ORDER BY ingested_at DESC LIMIT 1",
-                (lot_id,),
-            ).fetchone()
-            lot = conn.execute(
-                "SELECT rated_capacity, model_name FROM Lot WHERE lot_id = ?", (lot_id,)
-            ).fetchone()
-            buyer_code = extract_buyer_code_from_model_name(lot["model_name"])
-            charge_program_total_ah = get_active_charge_program_total_ah(
-                conn, lot["rated_capacity"], buyer_code
-            )
-            derived_input = {
-                "fill_weight": remaining["fill_weight"],
-                "water_loss": remaining["water_loss"],
-                "rated_capacity": lot["rated_capacity"],
-                "charge_amount": remaining["charge_amount"],
-                "voltage_1st": remaining["voltage_1st"],
-                "voltage_2nd": remaining["voltage_2nd"],
-                "charge_program_total_ah": charge_program_total_ah,
-                **{f"cell{i}_weight": remaining[f"cell{i}_weight"] for i in range(1, 7)},
+        if remaining_lot_ids:
+            # 로트 1건당 SELECT 2번(ProcessData 최신행 + Lot)씩 순차 실행하던 것을 IN 절 한 번씩,
+            # 총 2번의 쿼리로 배치 — 잔존 로트 수만 건이어도 항상 빠르게 끝나야 한다(이 함수
+            # 자체가 그 목적으로 한 번 고쳐졌던 곳, 위 2026-09-26 주석 참조 — 같은 증상 재발 방지).
+            placeholders = ", ".join(["?"] * len(remaining_lot_ids))
+            latest_process_by_lot: dict[str, sqlite3.Row] = {}
+            for r in conn.execute(
+                f"""
+                SELECT p.* FROM ProcessData p
+                JOIN (
+                    SELECT lot_id, MAX(id) AS latest_id FROM ProcessData
+                    WHERE lot_id IN ({placeholders}) GROUP BY lot_id
+                ) latest ON latest.latest_id = p.id
+                """,
+                remaining_lot_ids,
+            ).fetchall():
+                latest_process_by_lot[r["lot_id"]] = r
+            lot_by_id = {
+                r["lot_id"]: r
+                for r in conn.execute(
+                    f"SELECT lot_id, rated_capacity, model_name FROM Lot WHERE lot_id IN ({placeholders})",
+                    remaining_lot_ids,
+                ).fetchall()
             }
-            upsert_lot_derived(conn, lot_id, derived_input)
+            charge_program_lookup = build_charge_program_lookup(conn)
+
+            for lot_id in remaining_lot_ids:
+                remaining = latest_process_by_lot[lot_id]
+                lot = lot_by_id[lot_id]
+                buyer_code = extract_buyer_code_from_model_name(lot["model_name"])
+                charge_program_total_ah = lookup_charge_program_total_ah(
+                    charge_program_lookup, lot["rated_capacity"], buyer_code
+                )
+                derived_input = {
+                    "fill_weight": remaining["fill_weight"],
+                    "water_loss": remaining["water_loss"],
+                    "rated_capacity": lot["rated_capacity"],
+                    "charge_amount": remaining["charge_amount"],
+                    "voltage_1st": remaining["voltage_1st"],
+                    "voltage_2nd": remaining["voltage_2nd"],
+                    "charge_program_total_ah": charge_program_total_ah,
+                    **{f"cell{i}_weight": remaining[f"cell{i}_weight"] for i in range(1, 7)},
+                }
+                upsert_lot_derived(conn, lot_id, derived_input)
 
         conn.execute("DROP TABLE affected_lots")
         conn.execute("DROP TABLE orphan_lots")
@@ -754,14 +870,16 @@ def save_scoring_run(conn: sqlite3.Connection, result: dict) -> int:
         """
         INSERT INTO ScoringRun (
             target, threshold_pct, error_tolerance_pct,
-            n_total, n_scorable, n_matched, n_mismatched, success_rate_pct, reliable
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            n_total, n_scorable, n_matched, n_mismatched, success_rate_pct, reliable,
+            validation_mode, train_n, val_n
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             result["target"], result["threshold_pct"], result["error_tolerance_pct"],
             result["n_total"], result["n_scorable"], result["n_matched"], result["n_mismatched"],
             result["success_rate_pct"],
             None if result["reliable"] is None else int(result["reliable"]),
+            result.get("validation_mode", "in_sample"), result.get("train_n"), result.get("val_n"),
         ),
     )
     run_id = cursor.lastrowid

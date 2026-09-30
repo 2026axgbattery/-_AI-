@@ -5,13 +5,9 @@ import { useParams, useSearchParams } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { apiClient, type ModelLotsResponse } from "@/lib/api-client";
 import { ccaSpecBadge } from "@/lib/cca-spec";
+import { fmt } from "@/lib/format";
 
 type SortMode = "recent" | "tested_first";
-
-function fmt(v: number | null | undefined, digits = 1): string {
-  if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return v.toFixed(digits);
-}
 
 // 전체 로트 raw data를 페이지네이션 없이 한 번에 받기 위한 상한. 형명당 표본 수가
 // 이보다 많아지면 최신(또는 시험 매칭 우선) N건까지만 표시된다. 너무 크게 잡으면(예: 5,000건

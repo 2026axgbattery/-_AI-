@@ -2,6 +2,7 @@
 
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { CHART_COLORS } from "@/lib/chart-colors";
+import { IMPACT_DURATION_MS, IMPACT_EASING, usePrefersReducedMotion } from "@/lib/useMotion";
 import { ChartTooltipBox } from "./ChartTooltip";
 
 export interface TrendPointDatum {
@@ -27,6 +28,7 @@ function TrendTooltip({ active, payload }: { active?: boolean; payload?: { paylo
  * (2026-09-27, `.docs/33`). 값이 1개뿐일 때의 안내 문구는 호출부(`/detail-analysis`)가 그대로
  * 담당(추이 자체가 성립하지 않는 경우라 차트 문제가 아님). */
 export function TrendLineChart({ points }: { points: TrendPointDatum[] }) {
+  const reduceMotion = usePrefersReducedMotion();
   return (
     <ResponsiveContainer width="100%" height={260}>
       <LineChart data={points} margin={{ top: 16, right: 16, bottom: 4, left: 4 }}>
@@ -56,7 +58,9 @@ export function TrendLineChart({ points }: { points: TrendPointDatum[] }) {
           strokeWidth={2}
           dot={{ r: 3.5, fill: CHART_COLORS.green700, strokeWidth: 0 }}
           activeDot={{ r: 6, fill: CHART_COLORS.green700, stroke: "#fff", strokeWidth: 2 }}
-          isAnimationActive={false}
+          isAnimationActive={!reduceMotion}
+          animationDuration={IMPACT_DURATION_MS}
+          animationEasing={IMPACT_EASING}
         />
       </LineChart>
     </ResponsiveContainer>

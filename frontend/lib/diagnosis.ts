@@ -36,3 +36,12 @@ export function specBadge(spec: SpecJudgmentResult): { label: string; tone: "pas
   if (spec.spec_result === "fail") return { label: "부적합 (SPEC 미달)", tone: "fail" };
   return { label: spec.note ?? "판정 불가", tone: "unknown" };
 }
+
+/** `specBadge`/`ccaSpecBadge`의 tone을 `.status-chip`/`verdict-card` CSS 클래스로 매핑한다 —
+ * 대시보드·예측 화면 여러 곳에서 `tone === "pass" ? "ok" : tone === "fail" ? "warn" : "unknown"`
+ * 삼항연산을 각자 반복하고 있던 것을 하나로 합침(새 tone이 추가되면 여기 한 곳만 고치면 됨). */
+export function chipTone(tone: "pass" | "fail" | "unknown"): "ok" | "warn" | "unknown" {
+  if (tone === "pass") return "ok";
+  if (tone === "fail") return "warn";
+  return "unknown";
+}

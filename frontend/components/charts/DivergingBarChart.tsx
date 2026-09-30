@@ -11,17 +11,15 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { CHART_COLORS } from "@/lib/chart-colors";
+import { CHART_COLORS, CHART_TOOLTIP_CURSOR_FILL } from "@/lib/chart-colors";
+import { fmtSigned } from "@/lib/format";
+import { IMPACT_DURATION_MS, IMPACT_EASING, usePrefersReducedMotion } from "@/lib/useMotion";
 import { ChartTooltipBox } from "./ChartTooltip";
 
 export interface DivergingBarDatum {
   key: string;
   label: string;
   value: number;
-}
-
-function fmtSigned(v: number): string {
-  return `${v >= 0 ? "+" : ""}${v.toFixed(3)}`;
 }
 
 function DivergingTooltip({ active, payload }: { active?: boolean; payload?: { payload: DivergingBarDatum }[] }) {
@@ -69,6 +67,7 @@ function DivergingValueLabel(props: any) {
  * Recharts로 교체(2026-09-27, `.docs/33`). 값 도메인이 음수~양수에 걸쳐 있으면 Recharts가 0을
  * 기준선으로 알아서 막대를 그려주므로 별도의 커스텀 shape 없이 표준 BarChart로 구현된다. */
 export function DivergingBarChart({ data }: { data: DivergingBarDatum[] }) {
+  const reduceMotion = usePrefersReducedMotion();
   const maxAbs = Math.max(...data.map((d) => Math.abs(d.value)), 1e-9);
   const rowHeight = 40;
   const height = data.length * rowHeight + 16;
@@ -85,8 +84,15 @@ export function DivergingBarChart({ data }: { data: DivergingBarDatum[] }) {
           tick={{ fontSize: 12, fill: CHART_COLORS.textPrimary }}
         />
         <ReferenceLine x={0} stroke={CHART_COLORS.gray300} />
-        <Tooltip content={<DivergingTooltip />} cursor={{ fill: "rgba(51,63,72,0.05)" }} />
-        <Bar dataKey="value" radius={[4, 4, 4, 4]} maxBarSize={16} isAnimationActive={false}>
+        <Tooltip content={<DivergingTooltip />} cursor={{ fill: CHART_TOOLTIP_CURSOR_FILL }} />
+        <Bar
+          dataKey="value"
+          radius={[4, 4, 4, 4]}
+          maxBarSize={16}
+          isAnimationActive={!reduceMotion}
+          animationDuration={IMPACT_DURATION_MS}
+          animationEasing={IMPACT_EASING}
+        >
           {data.map((d) => (
             <Cell key={d.key} fill={d.value >= 0 ? CHART_COLORS.darkGray : CHART_COLORS.gray400} />
           ))}

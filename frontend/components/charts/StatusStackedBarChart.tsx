@@ -1,7 +1,8 @@
 "use client";
 
 import { Bar, BarChart, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { STATUS_COLORS, CHART_COLORS } from "@/lib/chart-colors";
+import { STATUS_COLORS, CHART_COLORS, CHART_TOOLTIP_CURSOR_FILL } from "@/lib/chart-colors";
+import { IMPACT_DURATION_MS, IMPACT_EASING, usePrefersReducedMotion } from "@/lib/useMotion";
 import { ChartTooltipBox } from "./ChartTooltip";
 
 export interface StatusBarDatum {
@@ -69,6 +70,7 @@ export function StatusStackedBarChart({
   onSelect: (key: string) => void;
   todayKey?: string;
 }) {
+  const reduceMotion = usePrefersReducedMotion();
   const rows: ChartRow[] = bars.map((b) => ({
     ...b,
     passPct: b.count ? (b.pass / b.count) * 100 : 0,
@@ -102,7 +104,7 @@ export function StatusStackedBarChart({
           axisLine={false}
           tick={<CategoryTick todayRowKey={todayRowKey} />}
         />
-        <Tooltip content={<StatusTooltip />} cursor={{ fill: "rgba(51,63,72,0.05)" }} />
+        <Tooltip content={<StatusTooltip />} cursor={{ fill: CHART_TOOLTIP_CURSOR_FILL }} />
         <Bar
           dataKey="passPct"
           stackId="s"
@@ -110,7 +112,9 @@ export function StatusStackedBarChart({
           stroke="#fff"
           strokeWidth={2}
           maxBarSize={22}
-          isAnimationActive={false}
+          isAnimationActive={!reduceMotion}
+          animationDuration={IMPACT_DURATION_MS}
+          animationEasing={IMPACT_EASING}
           cursor="pointer"
         />
         <Bar
@@ -120,7 +124,9 @@ export function StatusStackedBarChart({
           stroke="#fff"
           strokeWidth={2}
           maxBarSize={22}
-          isAnimationActive={false}
+          isAnimationActive={!reduceMotion}
+          animationDuration={IMPACT_DURATION_MS}
+          animationEasing={IMPACT_EASING}
           cursor="pointer"
         />
         <Bar
@@ -130,7 +136,9 @@ export function StatusStackedBarChart({
           stroke="#fff"
           strokeWidth={2}
           maxBarSize={22}
-          isAnimationActive={false}
+          isAnimationActive={!reduceMotion}
+          animationDuration={IMPACT_DURATION_MS}
+          animationEasing={IMPACT_EASING}
           cursor="pointer"
         >
           <LabelList

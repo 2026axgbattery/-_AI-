@@ -103,6 +103,10 @@ def rank_causes(
     for col in x_columns:
         if col not in x_values or col not in factor_means or col not in coefficients:
             continue
+        # x_values[col]은 키가 있어도 값이 None일 수 있다(예: retention_rate가 미측정인 로트를
+        # X+Y→Z 원인진단에 넣는 경우) — None - float는 TypeError이므로 여기서 건너뛴다.
+        if x_values[col] is None or factor_means[col] is None:
+            continue
         deviation = x_values[col] - factor_means[col]
         contribution = coefficients[col] * deviation
         direction = "high" if deviation >= 0 else "low"

@@ -6,7 +6,9 @@ import { StepFlow } from "@/components/StepFlow";
 import { CausesList } from "@/components/CausesList";
 import { StatusStackedBarChart } from "@/components/charts/StatusStackedBarChart";
 import { extractBuyerCode } from "@/lib/buyer";
-import { X_COLUMN_EXAMPLES, X_COLUMN_LABELS, X_COLUMN_ORDER, specBadge } from "@/lib/diagnosis";
+import { X_COLUMN_EXAMPLES, X_COLUMN_LABELS, X_COLUMN_ORDER, chipTone, specBadge } from "@/lib/diagnosis";
+import { fmt } from "@/lib/format";
+import { useCountUp } from "@/lib/useMotion";
 import {
   apiClient,
   ApiError,
@@ -54,10 +56,6 @@ function batchSeverity(row: BatchUnmatchedResultRow): number {
   return specs.includes("fail") ? 1 : 2;
 }
 
-function fmt(v: number | null | undefined, digits = 1): string {
-  if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return v.toFixed(digits);
-}
 
 /** 직전 실행 대비 변화량 — "이 조건을 바꾸면 Y·Z가 어떻게 달라지는지"를 재실행할 때마다
  * 바로 보여주기 위한 것(2026-09-27 요청). 같은 세션 안의 바로 이전 예측과만 비교한다. */
@@ -470,6 +468,19 @@ export default function PredictionPage() {
   }
 
   const verdict = manualResult ? buildVerdict(manualResult) : null;
+  // 아래 verdict-card 4개가 각자 specBadge(...)를 2~3번씩 다시 호출하던 것을 방지 — 한 번만
+  // 계산해 재사용한다(배치 예측 표의 yBadge/zBadge 계산 패턴과 동일).
+  const yBadge = manualResult ? specBadge(manualResult.y.spec) : null;
+  const zBadge = manualResult?.z.available ? specBadge(manualResult.z.spec) : null;
+  const saeBadge = manualResult?.sae_cca.available ? specBadge(manualResult.sae_cca.spec) : null;
+  const enBadge = manualResult?.en_cca.available ? specBadge(manualResult.en_cca.spec) : null;
+  // 예측 실행마다 결과 숫자가 0에서 실제 값까지 올라가는 카운트업 임팩트(.docs/35) — 4개
+  // verdict-card 모두 같은 컴포넌트 안에서 바로 렌더링되므로(별도 .map 콜백이 아님) 훅을
+  // 컴포넌트 최상단에서 조건 없이 호출해도 안전하다.
+  const yCountUp = useCountUp(manualResult?.y.predicted_value ?? null);
+  const zCountUp = useCountUp(manualResult?.z.available ? manualResult.z.predicted_capacity_rate : null);
+  const saeCountUp = useCountUp(manualResult?.sae_cca.available ? manualResult.sae_cca.predicted_value : null);
+  const enCountUp = useCountUp(manualResult?.en_cca.available ? manualResult.en_cca.predicted_value : null);
   const yDelta =
     manualResult && previousManualResult
       ? deltaLabel(manualResult.y.predicted_value, previousManualResult.y.predicted_value)
@@ -550,11 +561,7 @@ export default function PredictionPage() {
                 <div className="hero-body">
                   <div className="hero-eyebrow-row">
                     <span className="hero-eyebrow">종합 결론</span>
-                    <span
-                      className={`status-chip ${
-                        verdict.tone === "fail" ? "warn" : verdict.tone === "pass" ? "ok" : "unknown"
-                      }`}
-                    >
+                    <span className={`status-chip ${chipTone(verdict.tone)}`}>
                       {verdict.tone === "fail" ? "확인 필요" : verdict.tone === "pass" ? "정상" : "판정 불가"}
                     </span>
                   </div>
@@ -564,13 +571,13 @@ export default function PredictionPage() {
               </div>
 
               <div className="verdict-row">
-                <div className={`verdict-card status-${specBadge(manualResult!.y.spec).tone}`}>
+                <div className={`verdict-card status-${yBadge!.tone}`}>
                   <span className="stage-tag">1단 · X → Y</span>
                   <div className="vc-title">예측 포화도 (잔존율 proxy)</div>
                   <div className="vc-main">
-                    <span className="vc-value">{fmt(manualResult!.y.predicted_value)}%</span>
-                    <span className={`status-chip ${specBadge(manualResult!.y.spec).tone === "pass" ? "ok" : specBadge(manualResult!.y.spec).tone === "fail" ? "warn" : "unknown"}`}>
-                      {specBadge(manualResult!.y.spec).label}
+                    <span className="vc-value">{fmt(yCountUp)}%</span>
+                    <span className={`status-chip ${chipTone(yBadge!.tone)}`}>
+                      {yBadge!.label}
                     </span>
                   </div>
                   {manualResult!.y.spec.spec_lower !== null && (
@@ -586,19 +593,15 @@ export default function PredictionPage() {
                     </div>
                   )}
                 </div>
-                <div
-                  className={`verdict-card status-${
-                    manualResult!.z.available ? specBadge(manualResult!.z.spec).tone : "unknown"
-                  }`}
-                >
+                <div className={`verdict-card status-${zBadge?.tone ?? "unknown"}`}>
                   <span className="stage-tag">2단 · X + Ŷ → Z</span>
                   <div className="vc-title">예측 20시간 용량 (capacity_rate)</div>
                   <div className="vc-main">
                     {manualResult!.z.available ? (
                       <>
-                        <span className="vc-value">{fmt(manualResult!.z.predicted_capacity_rate)}%</span>
-                        <span className={`status-chip ${specBadge(manualResult!.z.spec).tone === "pass" ? "ok" : specBadge(manualResult!.z.spec).tone === "fail" ? "warn" : "unknown"}`}>
-                          {specBadge(manualResult!.z.spec).label}
+                        <span className="vc-value">{fmt(zCountUp)}%</span>
+                        <span className={`status-chip ${chipTone(zBadge!.tone)}`}>
+                          {zBadge!.label}
                         </span>
                       </>
                     ) : (
@@ -623,23 +626,17 @@ export default function PredictionPage() {
               </div>
 
               <div className="verdict-row">
-                <div
-                  className={`verdict-card status-${
-                    manualResult!.sae_cca.available ? specBadge(manualResult!.sae_cca.spec).tone : "unknown"
-                  }`}
-                >
+                <div className={`verdict-card status-${saeBadge?.tone ?? "unknown"}`}>
                   <span className="stage-tag">2단 · X + Ŷ → SAE CCA</span>
                   <div className="vc-title">예측 SAE CCA (저온시동전류, Ah)</div>
                   <div className="vc-main">
                     {manualResult!.sae_cca.available ? (
                       <>
                         <span className="vc-value">
-                          {manualResult!.sae_cca.predicted_value !== null
-                            ? `${fmt(manualResult!.sae_cca.predicted_value, 3)}Ah`
-                            : "—"}
+                          {manualResult!.sae_cca.predicted_value !== null ? `${fmt(saeCountUp, 3)}Ah` : "—"}
                         </span>
-                        <span className={`status-chip ${specBadge(manualResult!.sae_cca.spec).tone === "pass" ? "ok" : specBadge(manualResult!.sae_cca.spec).tone === "fail" ? "warn" : "unknown"}`}>
-                          {specBadge(manualResult!.sae_cca.spec).label}
+                        <span className={`status-chip ${chipTone(saeBadge!.tone)}`}>
+                          {saeBadge!.label}
                         </span>
                       </>
                     ) : (
@@ -658,23 +655,17 @@ export default function PredictionPage() {
                     <div className="vc-sub vc-delta">이전 예측 대비 {saeDelta}{saeDelta !== "변화 없음" ? "Ah" : ""}</div>
                   )}
                 </div>
-                <div
-                  className={`verdict-card status-${
-                    manualResult!.en_cca.available ? specBadge(manualResult!.en_cca.spec).tone : "unknown"
-                  }`}
-                >
+                <div className={`verdict-card status-${enBadge?.tone ?? "unknown"}`}>
                   <span className="stage-tag">2단 · X + Ŷ → EN CCA</span>
                   <div className="vc-title">예측 EN CCA (저온시동전류, Ah)</div>
                   <div className="vc-main">
                     {manualResult!.en_cca.available ? (
                       <>
                         <span className="vc-value">
-                          {manualResult!.en_cca.predicted_value !== null
-                            ? `${fmt(manualResult!.en_cca.predicted_value, 3)}Ah`
-                            : "—"}
+                          {manualResult!.en_cca.predicted_value !== null ? `${fmt(enCountUp, 3)}Ah` : "—"}
                         </span>
-                        <span className={`status-chip ${specBadge(manualResult!.en_cca.spec).tone === "pass" ? "ok" : specBadge(manualResult!.en_cca.spec).tone === "fail" ? "warn" : "unknown"}`}>
-                          {specBadge(manualResult!.en_cca.spec).label}
+                        <span className={`status-chip ${chipTone(enBadge!.tone)}`}>
+                          {enBadge!.label}
                         </span>
                       </>
                     ) : (

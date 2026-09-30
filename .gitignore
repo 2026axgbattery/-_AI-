@@ -1,6 +1,9 @@
 # Claude Code 로컬 세션/도구 상태 (공유 불필요, 세션마다 바뀜)
 .claude/
 
+# macOS
+.DS_Store
+
 # Python / backend
 backend/.venv/
 backend/db/*.db

@@ -96,9 +96,12 @@ def _parse_yyyymmdd(value) -> date | None:
 
 def parse_process_raw_workbook(file_bytes: bytes) -> list[dict]:
     """공정 raw 워크북(첫 시트)을 `ingest_process_rows`가 바로 받는 dict 리스트로 변환한다."""
-    header_df = pd.read_excel(io.BytesIO(file_bytes), sheet_name=0, header=None, nrows=4)
-    section_row = header_df.iloc[2].tolist()
-    field_row = header_df.iloc[3].tolist()
+    # 헤더(4행)와 본문을 각각 read_excel로 따로 읽으면 같은 워크북을 두 번 파싱하게 돼(openpyxl
+    # 워크북 전체를 다시 열고 다시 순회) 대용량 파일에서 업로드마다 시간이 거의 2배가 된다 —
+    # 한 번만 읽고 같은 DataFrame에서 헤더 행과 본문을 나눠 쓴다.
+    full_df = pd.read_excel(io.BytesIO(file_bytes), sheet_name=0, header=None)
+    section_row = full_df.iloc[2].tolist()
+    field_row = full_df.iloc[3].tolist()
     header_map = _build_header_map(section_row, field_row)
 
     def col(section: str | None, field: str | None = None) -> int | None:
@@ -108,7 +111,7 @@ def parse_process_raw_workbook(file_bytes: bytes) -> list[dict]:
         idx = col(section, field)
         return None if idx is None else r.iloc[idx]
 
-    df = pd.read_excel(io.BytesIO(file_bytes), sheet_name=0, header=None, skiprows=4)
+    df = full_df.iloc[4:].reset_index(drop=True)
 
     date_candidate_cols = [col(name, "Date/Time") for name in _PROD_DATE_CANDIDATES]
 

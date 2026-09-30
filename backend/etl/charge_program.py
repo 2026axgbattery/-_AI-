@@ -142,12 +142,15 @@ def _parse_block(df: pd.DataFrame, title_row: int, col_start: int, col_end: int)
         if _blank(type_val):
             continue
         type_text = str(type_val).strip()
+        # col_current~col_electricity_c는 반드시 이 블록의 폭(col_end) 안에서만 읽어야 한다 —
+        # df.shape[1](시트 전체 폭)까지 허용하면 옆 블록의 컬럼 수가 이 블록보다 적을 때
+        # 인접 블록의 셀 값을 이 블록 것으로 잘못 읽어온다.
         steps.append({
             "step_type": type_text,
-            "current_a": _native(df.iat[i, col_current]) if col_current < df.shape[1] else None,
-            "hours": _native(df.iat[i, col_hours]) if col_hours < df.shape[1] else None,
-            "charge_ah": _native(df.iat[i, col_charge_ah]) if col_charge_ah < df.shape[1] else None,
-            "electricity_c": _native(df.iat[i, col_electricity_c]) if col_electricity_c < df.shape[1] else None,
+            "current_a": _native(df.iat[i, col_current]) if col_current < col_end else None,
+            "hours": _native(df.iat[i, col_hours]) if col_hours < col_end else None,
+            "charge_ah": _native(df.iat[i, col_charge_ah]) if col_charge_ah < col_end else None,
+            "electricity_c": _native(df.iat[i, col_electricity_c]) if col_electricity_c < col_end else None,
         })
 
     charge_hours = meta["charge_hours"]
@@ -155,10 +158,10 @@ def _parse_block(df: pd.DataFrame, title_row: int, col_start: int, col_end: int)
     total_electricity_c = None
     if total_row is not None:
         if charge_hours is None:
-            charge_hours = _native(df.iat[total_row, col_hours]) if col_hours < df.shape[1] else None
-        total_charge_ah = _native(df.iat[total_row, col_charge_ah]) if col_charge_ah < df.shape[1] else None
+            charge_hours = _native(df.iat[total_row, col_hours]) if col_hours < col_end else None
+        total_charge_ah = _native(df.iat[total_row, col_charge_ah]) if col_charge_ah < col_end else None
         total_electricity_c = (
-            _native(df.iat[total_row, col_electricity_c]) if col_electricity_c < df.shape[1] else None
+            _native(df.iat[total_row, col_electricity_c]) if col_electricity_c < col_end else None
         )
 
     return {

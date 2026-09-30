@@ -30,8 +30,9 @@ def compute_lot_derived(row: dict) -> dict:
 
     # fill_weight/water_loss는 원칙적으로 항상 있어야 하지만(Y 산출 원천), 실제 raw data에는
     # 해당 공정 단계 자체가 누락된 로트가 있다(.docs/14) — 이 경우 Y 관련 파생값은 모두 NULL로
-    # 두고, 그 로트는 1단(X→Y) 분석 대상에서 자연스럽게 제외된다.
-    has_fill_data = fill_weight is not None and water_loss is not None
+    # 두고, 그 로트는 1단(X→Y) 분석 대상에서 자연스럽게 제외된다. fill_weight=0(센서/입력 오류)도
+    # 같은 취급 — 나눗셈 분모라 0이면 ZeroDivisionError로 업로드 전체가 죽는다.
+    has_fill_data = fill_weight is not None and water_loss is not None and fill_weight != 0
     retention_rate = (fill_weight - water_loss) / fill_weight * 100 if has_fill_data else None
 
     # theoretical_water_loss/water_loss_residual: 이론치 대비 실측이 ~139배 차이 나는 것을 사용자가
@@ -50,7 +51,8 @@ def compute_lot_derived(row: dict) -> dict:
     water_loss_per_ah = _safe_div(water_loss, overcharge_ah)
 
     fill_per_rated = _safe_div(fill_weight, rated_capacity)
-    charge_ratio = (charge_amount / rated_capacity * 100) if charge_amount is not None else None
+    charge_ratio_raw = _safe_div(charge_amount, rated_capacity)
+    charge_ratio = charge_ratio_raw * 100 if charge_ratio_raw is not None else None
 
     cell_weights = [
         row.get(f"cell{i}_weight") for i in range(1, 7) if row.get(f"cell{i}_weight") is not None

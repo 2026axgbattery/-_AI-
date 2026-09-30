@@ -7,7 +7,7 @@ from __future__ import annotations
 import csv
 import io
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from backend.db import repository as repo
@@ -19,8 +19,23 @@ router = APIRouter(prefix="/api", tags=["upload"])
 _RAW_EXCEL_EXTENSIONS = (".xls", ".xlsx")
 
 
+def _decode_csv_bytes(raw_bytes: bytes) -> str:
+    """엑셀/한글 툴에서 "다른 이름으로 저장"한 CSV는 cp949(EUC-KR)로 인코딩되는 경우가 흔하다
+    (UTF-8이 아니면 무조건 실패하는 대신 순서대로 시도) — 전부 실패하면 400으로 명확히 안내한다."""
+    for encoding in ("utf-8-sig", "cp949"):
+        try:
+            return raw_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise HTTPException(
+        status_code=400,
+        detail="CSV 파일의 인코딩을 인식할 수 없습니다(UTF-8/CP949만 지원). "
+        "엑셀에서 'CSV UTF-8(쉼표로 분리)' 형식으로 다시 저장해 주세요.",
+    )
+
+
 def _read_csv_rows(raw_bytes: bytes) -> tuple[list[str], list[dict]]:
-    text = raw_bytes.decode("utf-8-sig")
+    text = _decode_csv_bytes(raw_bytes)
     reader = csv.DictReader(io.StringIO(text))
     rows = list(reader)
     return reader.fieldnames or [], rows
@@ -31,7 +46,10 @@ def _is_raw_excel(filename: str | None) -> bool:
 
 
 @router.post("/upload/process")
-async def upload_process_csv(file: UploadFile):
+async def upload_process_csv(
+    file: UploadFile,
+    dry_run: bool = Query(False, description="true면 실제로 저장하지 않고 미리보기 요약만 반환(.docs/35)"),
+):
     raw = await file.read()
 
     if _is_raw_excel(file.filename):
@@ -44,14 +62,19 @@ async def upload_process_csv(file: UploadFile):
 
     conn = repo.get_connection()
     try:
-        result = repo.ingest_process_rows(conn, rows, filename=file.filename or "process_data.csv")
+        result = repo.ingest_process_rows(
+            conn, rows, filename=file.filename or "process_data.csv", dry_run=dry_run
+        )
     finally:
         conn.close()
     return {"file": "process", "row_count": len(rows), **result}
 
 
 @router.post("/upload/test")
-async def upload_test_csv(file: UploadFile):
+async def upload_test_csv(
+    file: UploadFile,
+    dry_run: bool = Query(False, description="true면 실제로 저장하지 않고 미리보기 요약만 반환(.docs/35)"),
+):
     raw = await file.read()
 
     if _is_raw_excel(file.filename):
@@ -64,7 +87,9 @@ async def upload_test_csv(file: UploadFile):
 
     conn = repo.get_connection()
     try:
-        result = repo.ingest_test_rows(conn, rows, filename=file.filename or "test_data.csv")
+        result = repo.ingest_test_rows(
+            conn, rows, filename=file.filename or "test_data.csv", dry_run=dry_run
+        )
     finally:
         conn.close()
     return {"file": "test", "row_count": len(rows), **result}
@@ -181,9 +206,15 @@ def put_lot_manual_fields(lot_id: str, payload: ManualFieldsUpdate):
 
         updates = {k: v for k, v in payload.model_dump().items() if v is not None}
         if updates:
+            # ProcessData는 append-only라 같은 lot_id가 여러 행을 가질 수 있다 — 로트당 최신
+            # 행(id 최댓값)에만 적용해야 한다(그렇지 않으면 옛 행이 갱신되거나, 뒤이은
+            # LotDerived 재계산이 옛 행 값을 읽어 Y가 조용히 잘못된 값으로 되돌아갈 수 있다).
             set_clause = ", ".join(f"{k} = ?" for k in updates)
             conn.execute(
-                f"UPDATE ProcessData SET {set_clause} WHERE lot_id = ?",
+                f"""
+                UPDATE ProcessData SET {set_clause}
+                WHERE id = (SELECT MAX(id) FROM ProcessData WHERE lot_id = ?)
+                """,
                 [*updates.values(), lot_id],
             )
             row = conn.execute(
@@ -191,7 +222,8 @@ def put_lot_manual_fields(lot_id: str, payload: ManualFieldsUpdate):
                 SELECT p.fill_weight, p.water_loss, p.charge_amount, p.voltage_1st, p.voltage_2nd,
                        p.cell1_weight, p.cell2_weight, p.cell3_weight, p.cell4_weight,
                        p.cell5_weight, p.cell6_weight, l.rated_capacity
-                FROM ProcessData p JOIN Lot l ON l.lot_id = p.lot_id WHERE p.lot_id = ?
+                FROM ProcessData p JOIN Lot l ON l.lot_id = p.lot_id
+                WHERE p.id = (SELECT MAX(id) FROM ProcessData WHERE lot_id = ?)
                 """,
                 (lot_id,),
             ).fetchone()

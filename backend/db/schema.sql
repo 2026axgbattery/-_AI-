@@ -235,7 +235,16 @@ CREATE TABLE IF NOT EXISTS ScoringRun (
     n_matched        INTEGER NOT NULL,  -- 예측 판정 == 실측 판정
     n_mismatched     INTEGER NOT NULL,
     success_rate_pct REAL,             -- n_matched / n_scorable * 100, n_scorable=0이면 NULL
-    reliable         INTEGER CHECK (reliable IN (0, 1))  -- success_rate_pct >= threshold_pct, 판정불가면 NULL
+    reliable         INTEGER CHECK (reliable IN (0, 1)),  -- success_rate_pct >= threshold_pct, 판정불가면 NULL
+    -- 홀드아웃(train/val) 검증(.docs/35, 2026-09-30 v2 착수). validation_mode='holdout'이면
+    -- val_n건은 train_n건 학습에 전혀 쓰이지 않은 표본으로만 채점한 것 — 'in_sample'(표본 부족
+    -- 폴백)이면 과거처럼 학습에 쓴 행을 그대로 다시 채점한 것이라 val_n==train_n==n_scorable 근방.
+    -- 신규 컬럼이라 CHECK 제약이 없는 한 로컬 app.db에는 ALTER TABLE로 안전하게 추가 가능
+    -- (CLAUDE.md "알아두면 좋은 함정" 참조 — 이 저장소를 처음 받는 컴퓨터는 이 CREATE TABLE이
+    -- 그대로 적용되니 무관, 이미 app.db가 있던 기존 컴퓨터만 해당).
+    validation_mode  TEXT DEFAULT 'in_sample',
+    train_n          INTEGER,
+    val_n            INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS ScoringResult (

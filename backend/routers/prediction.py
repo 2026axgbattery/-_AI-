@@ -132,6 +132,45 @@ def _load_checkpoint_runs(conn) -> dict:
 _NO_SPEC_LOWER = {"spec_result": None, "spec_lower": None, "deviation": None}
 
 
+def _predict_cca_ah_and_prediction_id(
+    conn, ah_run: dict | None, x_with_y: dict, lot_id: str | None, target: str, source: str
+) -> tuple[float | None, int | None]:
+    """SAE/EN CCA 공통 전처리 — 방전량(Ah) 참고값 예측 + `Prediction` 로그 저장(`run_id`는 기존
+    방전량 회귀 것을 그대로 씀, `.docs/29`: 판정 자체는 체크포인트 회귀가 따로 담당)."""
+    predicted_ah = predict(ah_run["coefficients"], ah_run["intercept"], x_with_y) if ah_run else None
+    prediction_id = (
+        repo.save_prediction(conn, lot_id, ah_run["run_id"], target, predicted_ah, "predicted", source)
+        if ah_run else None
+    )
+    return predicted_ah, prediction_id
+
+
+def _cca_checkpoint_unavailable_block(ah_run: dict | None, predicted_ah: float | None) -> dict:
+    """체크포인트 회귀가 표본 부족으로 아직 학습되지 않은 경우의 SAE/EN 공통 응답.
+    방전량 회귀 자체도 없으면(ah_run is None) 참고값조차 보여줄 게 없어 완전히 판정불가로 반환."""
+    if ah_run is None:
+        return {"available": False}
+    return {
+        "available": True, "run_id": ah_run["run_id"], "run_at": ah_run.get("run_at"),
+        "predicted_value": predicted_ah, "input_y_source": "predicted",
+        "spec": {**_NO_SPEC_LOWER, "note": "신뢰성 시험 체크포인트 표본 부족으로 판정 불가"},
+        "causes": [],
+    }
+
+
+def _save_cca_verdict(
+    conn, lot_id: str | None, prediction_id: int | None, target: str,
+    verdict_result: str | None, spec_detail: dict, causes: list[dict],
+) -> None:
+    if prediction_id is None:
+        return
+    if verdict_result is not None:
+        repo.save_spec_judgment(conn, lot_id, prediction_id, target, verdict_result, spec_detail)
+    if causes:
+        recommendation_text = " / ".join(c["recommendation"] for c in causes)
+        repo.save_cause_diagnosis(conn, lot_id, prediction_id, target, causes, recommendation_text)
+
+
 def _predict_sae_cca_block(
     conn, ah_run: dict | None, checkpoint_runs: dict, lot_id: str | None, x_with_y: dict, source: str
 ) -> dict:
@@ -142,21 +181,12 @@ def _predict_sae_cca_block(
     저장은 기존 방전량 회귀의 `run_id`/`prediction_id`에 그대로 연결한다(스키마 변경 없음).
     """
     hold_run, hold_means = checkpoint_runs["hold7v2"]
-    predicted_ah = predict(ah_run["coefficients"], ah_run["intercept"], x_with_y) if ah_run else None
-    prediction_id = (
-        repo.save_prediction(conn, lot_id, ah_run["run_id"], "sae_cca", predicted_ah, "predicted", source)
-        if ah_run else None
+    predicted_ah, prediction_id = _predict_cca_ah_and_prediction_id(
+        conn, ah_run, x_with_y, lot_id, "sae_cca", source
     )
 
     if hold_run is None:
-        if ah_run is None:
-            return {"available": False}
-        return {
-            "available": True, "run_id": ah_run["run_id"], "run_at": ah_run.get("run_at"),
-            "predicted_value": predicted_ah, "input_y_source": "predicted",
-            "spec": {**_NO_SPEC_LOWER, "note": "신뢰성 시험 체크포인트 표본 부족으로 판정 불가"},
-            "causes": [],
-        }
+        return _cca_checkpoint_unavailable_block(ah_run, predicted_ah)
 
     predicted_hold_7v2 = predict(hold_run["coefficients"], hold_run["intercept"], x_with_y)
     verdict = judge_sae_cca(predicted_hold_7v2)
@@ -166,15 +196,10 @@ def _predict_sae_cca_block(
     if verdict["result"] == "fail":
         causes = rank_causes(hold_run["x_columns"], hold_run["coefficients"], x_with_y, hold_means)
 
-    if prediction_id is not None:
-        if verdict["result"] is not None:
-            repo.save_spec_judgment(
-                conn, lot_id, prediction_id, "sae_cca", verdict["result"],
-                {"hold_7v2_sec_min": verdict["hold_7v2_sec_min"]},
-            )
-        if causes:
-            recommendation_text = " / ".join(c["recommendation"] for c in causes)
-            repo.save_cause_diagnosis(conn, lot_id, prediction_id, "sae_cca", causes, recommendation_text)
+    _save_cca_verdict(
+        conn, lot_id, prediction_id, "sae_cca", verdict["result"],
+        {"hold_7v2_sec_min": verdict["hold_7v2_sec_min"]}, causes,
+    )
 
     return {
         "available": True,
@@ -196,21 +221,12 @@ def _predict_en_cca_block(
     결과를 합쳐 |기여도| 기준으로 다시 정렬해 상위 3개만 남긴다."""
     voltage_run, voltage_means = checkpoint_runs["voltage"]
     hold_run, hold_means = checkpoint_runs["hold6v"]
-    predicted_ah = predict(ah_run["coefficients"], ah_run["intercept"], x_with_y) if ah_run else None
-    prediction_id = (
-        repo.save_prediction(conn, lot_id, ah_run["run_id"], "en_cca", predicted_ah, "predicted", source)
-        if ah_run else None
+    predicted_ah, prediction_id = _predict_cca_ah_and_prediction_id(
+        conn, ah_run, x_with_y, lot_id, "en_cca", source
     )
 
     if voltage_run is None or hold_run is None:
-        if ah_run is None:
-            return {"available": False}
-        return {
-            "available": True, "run_id": ah_run["run_id"], "run_at": ah_run.get("run_at"),
-            "predicted_value": predicted_ah, "input_y_source": "predicted",
-            "spec": {**_NO_SPEC_LOWER, "note": "신뢰성 시험 체크포인트 표본 부족으로 판정 불가"},
-            "causes": [],
-        }
+        return _cca_checkpoint_unavailable_block(ah_run, predicted_ah)
 
     predicted_voltage_10s = predict(voltage_run["coefficients"], voltage_run["intercept"], x_with_y)
     predicted_hold_6v = predict(hold_run["coefficients"], hold_run["intercept"], x_with_y)
@@ -233,15 +249,10 @@ def _predict_en_cca_block(
         for i, c in enumerate(causes, start=1):
             c["rank"] = i
 
-    if prediction_id is not None:
-        if verdict["result"] is not None:
-            repo.save_spec_judgment(
-                conn, lot_id, prediction_id, "en_cca", verdict["result"],
-                {"voltage_10s_min": verdict["voltage_10s_min"], "hold_6v_sec_min": verdict["hold_6v_sec_min"]},
-            )
-        if causes:
-            recommendation_text = " / ".join(c["recommendation"] for c in causes)
-            repo.save_cause_diagnosis(conn, lot_id, prediction_id, "en_cca", causes, recommendation_text)
+    _save_cca_verdict(
+        conn, lot_id, prediction_id, "en_cca", verdict["result"],
+        {"voltage_10s_min": verdict["voltage_10s_min"], "hold_6v_sec_min": verdict["hold_6v_sec_min"]}, causes,
+    )
 
     return {
         "available": True,

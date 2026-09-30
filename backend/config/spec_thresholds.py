@@ -24,3 +24,11 @@ SAE_CCA_7V2_HOLD_SEC_MIN = 30.0  # sec, 7.2V까지 지속시간 하한
 SCORING_SUCCESS_RATE_THRESHOLD_PCT = 90.0
 # 참고용(성공/실패 판정 축은 아님) — 예측값이 실측값 대비 이 오차율 이내인지 별도로 기록한다.
 SCORING_ERROR_TOLERANCE_PCT = 10.0
+
+# 홀드아웃(train/val) 검증(.docs/35, 2026-09-30, v2 착수 — docs/prd.md §3에서 애초 "→v2, 10월"로
+# 미룬 항목). 학습(train)에 쓰지 않은 val 표본으로만 채점해야 "이 모델이 새 로트에도 통할지"를
+# 정직하게 보여준다 — 시험 매칭 표본이 이 값의 5배(val 최소 표본 ÷ 20%)에도 못 미치면 분할 자체가
+# 무의미해(val이 몇 건 안 남아 일치율이 우연에 크게 좌우됨) 정직하게 in-sample로 폴백한다.
+MIN_HOLDOUT_VAL_SIZE = 5
+HOLDOUT_VAL_RATIO = 0.2
+HOLDOUT_SPLIT_SEED = 42  # 재현성(docs/prd.md §9 "재현성: 규칙기반 100% 동일결과") 유지용 고정 시드

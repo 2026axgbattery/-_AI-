@@ -1,5 +1,7 @@
 "use client";
 
+import { usePrefersReducedMotion } from "@/lib/useMotion";
+
 /** 소형 원형 게이지 — 대시보드 히어로의 Y/Z/CCA 평균 지표를 숫자 텍스트만이 아니라 "그림으로
  * 바로 읽히는" 형태로도 보여주기 위해 추가(2026-09-27, `.docs/33` — 배터리 게이지(BatteryGauge)의
  * 그림 기반 표현을 히어로까지 확장해달라는 요청). 배터리 이미지는 물리적 용량(Y/Z) 은유라 좁은
@@ -16,6 +18,7 @@ export function RadialGauge({
   size?: number;
   strokeWidth?: number;
 }) {
+  const reduceMotion = usePrefersReducedMotion();
   const clamped = value === null ? 0 : Math.max(0, Math.min(100, value));
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -44,7 +47,7 @@ export function RadialGauge({
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           transform={`rotate(-90 ${center} ${center})`}
-          style={{ transition: "stroke-dashoffset 600ms ease-out" }}
+          style={{ transition: reduceMotion ? "none" : "stroke-dashoffset 600ms ease-out" }}
         />
       )}
     </svg>

@@ -8,6 +8,7 @@ import {
   ApiError,
   type ManualFieldGroup,
   type UploadBatch,
+  type UploadResult,
   type UploadSummary,
 } from "@/lib/api-client";
 
@@ -19,6 +20,13 @@ interface FileState {
 }
 
 const IDLE: FileState = { status: "idle" };
+
+/** 업로드 미리보기(.docs/35) — 파일을 실제로 반영하기 전, 같은 파싱/검증 로직으로 "이렇게
+ * 해석했습니다"를 먼저 보여주고 사용자가 확인해야 반영되도록 하기 위한 대기 상태. */
+interface PendingPreview {
+  file: File;
+  result: UploadResult;
+}
 
 export default function UploadPage() {
   const [processState, setProcessState] = useState<FileState>(IDLE);
@@ -107,14 +115,47 @@ export default function UploadPage() {
     refreshBatches();
   }, [refreshSummary, refreshManualFields, refreshBatches]);
 
+  const [processPreview, setProcessPreview] = useState<PendingPreview | null>(null);
+  const [testPreview, setTestPreview] = useState<PendingPreview | null>(null);
+  const [processConfirming, setProcessConfirming] = useState(false);
+  const [testConfirming, setTestConfirming] = useState(false);
+
+  /** 파일을 고르면 바로 반영하지 않고 dry_run=true로 먼저 조회 — 실제 반영과 같은 파싱/검증
+   * 로직을 그대로 태우므로 "이렇게 해석했습니다"가 실제 결과와 항상 일치한다(.docs/35). */
   async function handleProcessFile(file: File) {
+    setProcessState({ status: "previewing" });
+    setProcessPreview(null);
+    try {
+      const result = await apiClient.uploadProcessCsv(file, { dryRun: true });
+      setProcessState(IDLE);
+      setProcessPreview({ file, result });
+    } catch (err) {
+      setProcessState({ status: "error", errorMessage: describeUploadError(err) });
+    }
+  }
+
+  async function handleTestFile(file: File) {
+    setTestState({ status: "previewing" });
+    setTestPreview(null);
+    try {
+      const result = await apiClient.uploadTestCsv(file, { dryRun: true });
+      setTestState(IDLE);
+      setTestPreview({ file, result });
+    } catch (err) {
+      setTestState({ status: "error", errorMessage: describeUploadError(err) });
+    }
+  }
+
+  async function handleConfirmProcessUpload() {
+    if (!processPreview) return;
+    setProcessConfirming(true);
     setProcessState({ status: "uploading" });
     try {
-      const result = await apiClient.uploadProcessCsv(file);
+      const result = await apiClient.uploadProcessCsv(processPreview.file);
       const duplicates = result.duplicate_lot_ids ?? [];
       setProcessState({
         status: "done",
-        fileName: file.name,
+        fileName: processPreview.file.name,
         warningMessage:
           duplicates.length > 0
             ? `${duplicates.length}건은 이미 등록된 lot_id입니다 — 데이터는 append-only로 계속 누적되므로, ` +
@@ -123,20 +164,25 @@ export default function UploadPage() {
               `(예: ${duplicates.slice(0, 3).join(", ")}${duplicates.length > 3 ? " 외" : ""})`
             : undefined,
       });
+      setProcessPreview(null);
       await Promise.all([refreshSummary(), refreshManualFields(), refreshBatches()]);
     } catch (err) {
       setProcessState({ status: "error", errorMessage: describeUploadError(err) });
+    } finally {
+      setProcessConfirming(false);
     }
   }
 
-  async function handleTestFile(file: File) {
+  async function handleConfirmTestUpload() {
+    if (!testPreview) return;
+    setTestConfirming(true);
     setTestState({ status: "uploading" });
     try {
-      const result = await apiClient.uploadTestCsv(file);
+      const result = await apiClient.uploadTestCsv(testPreview.file);
       const skipped = result.skipped_unknown_lot ?? [];
       setTestState({
         status: "done",
-        fileName: file.name,
+        fileName: testPreview.file.name,
         warningMessage:
           skipped.length > 0
             ? `${skipped.length}건은 일치하는 공정 데이터(lot_id)가 아직 없어 매칭에서 제외됐습니다 — ` +
@@ -144,10 +190,23 @@ export default function UploadPage() {
               `(예: ${skipped.slice(0, 3).join(", ")}${skipped.length > 3 ? " 외" : ""})`
             : undefined,
       });
+      setTestPreview(null);
       await Promise.all([refreshSummary(), refreshBatches()]);
     } catch (err) {
       setTestState({ status: "error", errorMessage: describeUploadError(err) });
+    } finally {
+      setTestConfirming(false);
     }
+  }
+
+  function handleCancelProcessPreview() {
+    setProcessPreview(null);
+    setProcessState(IDLE);
+  }
+
+  function handleCancelTestPreview() {
+    setTestPreview(null);
+    setTestState(IDLE);
   }
 
   async function handleDeleteBatch(batch: UploadBatch) {
@@ -330,6 +389,21 @@ export default function UploadPage() {
                 <div>{processState.warningMessage}</div>
               </div>
             )}
+            {processPreview && (
+              <UploadPreviewCard
+                lines={[
+                  `총 ${processPreview.result.row_count}행 중 신규 로트 ${processPreview.result.inserted_lots ?? 0}건`,
+                  `중복 lot_id ${(processPreview.result.duplicate_lot_ids ?? []).length}건`,
+                  `형명 인식 실패 등으로 건너뜀 ${(processPreview.result.skipped_invalid_rows ?? []).length}건`,
+                ]}
+                details={(processPreview.result.skipped_invalid_rows ?? [])
+                  .slice(0, 5)
+                  .map((r) => `${r.lot_id ?? "(lot_id 없음)"}: ${r.reason}`)}
+                confirming={processConfirming}
+                onConfirm={handleConfirmProcessUpload}
+                onCancel={handleCancelProcessPreview}
+              />
+            )}
           </div>
 
           <div className="card">
@@ -351,6 +425,18 @@ export default function UploadPage() {
                 <span>⚠️</span>
                 <div>{testState.warningMessage}</div>
               </div>
+            )}
+            {testPreview && (
+              <UploadPreviewCard
+                lines={[
+                  `총 ${testPreview.result.row_count}행 중 매칭 반영 ${testPreview.result.inserted_test_rows ?? 0}건`,
+                  `일치하는 공정 데이터 없어 제외 ${(testPreview.result.skipped_unknown_lot ?? []).length}건`,
+                ]}
+                details={(testPreview.result.skipped_unknown_lot ?? []).slice(0, 5)}
+                confirming={testConfirming}
+                onConfirm={handleConfirmTestUpload}
+                onCancel={handleCancelTestPreview}
+              />
             )}
           </div>
         </div>
@@ -675,6 +761,55 @@ export default function UploadPage() {
         </div>
       </div>
     </>
+  );
+}
+
+/** 업로드 미리보기 확인 카드(.docs/35) — dry_run=true로 받아온 요약을 보여주고, 사용자가
+ * "반영하기"를 눌러야 실제 커밋이 일어난다. 공정/시험 데이터 두 Dropzone이 요약 문구·상세
+ * 목록만 다르고 카드 구조·버튼은 동일해 하나로 공유한다. */
+function UploadPreviewCard({
+  lines,
+  details,
+  confirming,
+  onConfirm,
+  onCancel,
+}: {
+  lines: string[];
+  details: string[];
+  confirming: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      className="alert"
+      style={{ marginTop: "var(--space-3)", marginBottom: 0, flexDirection: "column", alignItems: "stretch" }}
+    >
+      <div style={{ display: "flex", gap: "var(--space-3)" }}>
+        <span>📋</span>
+        <div>
+          <b>미리보기 — 아직 저장되지 않았습니다.</b>
+          <ul style={{ margin: "var(--space-2) 0 0", paddingLeft: "1.2em" }}>
+            {lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          {details.length > 0 && (
+            <div style={{ marginTop: "var(--space-2)", color: "var(--color-text-secondary)" }}>
+              예: {details.join(" · ")}
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: "var(--space-2)", marginTop: "var(--space-3)", justifyContent: "flex-end" }}>
+        <button className="btn btn-secondary btn-sm" onClick={onCancel} disabled={confirming}>
+          취소
+        </button>
+        <button className="btn btn-primary btn-sm" onClick={onConfirm} disabled={confirming}>
+          {confirming ? "반영 중..." : "반영하기"}
+        </button>
+      </div>
+    </div>
   );
 }
 
