@@ -26,8 +26,10 @@ frontend/.next/
 *.xlsx
 *.xlsm
 !templates/*.xlsx
+!더미 데이터/*.xlsx
 *.csv
 !templates/*.csv
+!더미 데이터/*.csv
 *.zip
 세방이.png
 튜터 조언.txt
