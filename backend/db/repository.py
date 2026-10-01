@@ -76,6 +76,7 @@ def init_db() -> None:
     try:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         conn.commit()
+        seed_charge_program_if_empty(conn)
     finally:
         conn.close()
 
@@ -309,6 +310,82 @@ def replace_charge_program_specs(
         )
     conn.commit()
     return {"program_row_count": len(rows)}
+
+
+# 기준표 자동 시드 후보(우선순위 순). 실제 원본은 .gitignore라 로컬에만 있을 수 있고, backend/seed의
+# 더미 기준표는 저장소에 포함돼 새 DB(Render 휘발성 디스크·새 컴퓨터 클론 등)에서도 항상 존재한다.
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CHARGE_PROGRAM_SEED_CANDIDATES = [
+    _PROJECT_ROOT / "★ 260428 AGM CF 충전 프로그램 3.xlsx",
+    _PROJECT_ROOT / "backend" / "seed" / "charge_program_default.xlsx",
+]
+
+
+def seed_charge_program_if_empty(conn: sqlite3.Connection) -> dict:
+    """`ChargeProgramSpec`이 비어 있으면 시드 파일로 채우고 전체 로트 이탈도를 재계산한다.
+
+    기준표가 비면 charge_program_deviation_pct가 전부 NULL이 돼 1·2단 회귀가 "표본 0건"으로
+    실패한다(.docs/41) — 수동 업로드에만 의존하지 않도록 DB가 비는 모든 경로(새 DB·휘발성
+    디스크·클론)에서 자동 복구한다. 이미 기준표가 있으면 아무것도 하지 않는다(사용자 업로드 보존).
+    """
+    from backend.etl.charge_program import parse_charge_program_workbook
+
+    existing = conn.execute("SELECT COUNT(*) AS n FROM ChargeProgramSpec").fetchone()["n"]
+    if existing > 0:
+        return {"seeded": False, "reason": "already_present"}
+    for path in CHARGE_PROGRAM_SEED_CANDIDATES:
+        if not path.exists():
+            continue
+        rows = parse_charge_program_workbook(path.read_bytes())
+        if not rows:
+            continue
+        replace_charge_program_specs(conn, rows, source_file=path.name)
+        recomputed = recompute_all_lot_derived(conn)
+        return {"seeded": True, "source_file": path.name, "program_row_count": len(rows), **recomputed}
+    return {"seeded": False, "reason": "no_seed_file"}
+
+
+def get_charge_program_coverage(conn: sqlite3.Connection) -> dict:
+    """기준표 대비 로트 매칭 현황. 표본 부족 시 '왜 부족한지'를 설명하는 데 쓴다."""
+    spec_count = conn.execute("SELECT COUNT(*) AS n FROM ChargeProgramSpec").fetchone()["n"]
+    rows = conn.execute(
+        "SELECT l.model_name, l.rated_capacity, d.charge_program_deviation_pct "
+        "FROM Lot l JOIN LotDerived d ON d.lot_id = l.lot_id"
+    ).fetchall()
+    unmatched_combos: dict[tuple[float, str], int] = {}
+    unmatched = 0
+    for r in rows:
+        if r["charge_program_deviation_pct"] is None:
+            unmatched += 1
+            key = (r["rated_capacity"], extract_buyer_code_from_model_name(r["model_name"]) or "?")
+            unmatched_combos[key] = unmatched_combos.get(key, 0) + 1
+    return {
+        "spec_count": spec_count,
+        "lot_count": len(rows),
+        "unmatched_lot_count": unmatched,
+        "unmatched_combos": [
+            {"rated_capacity": cap, "buyer_code": code, "lot_count": n}
+            for (cap, code), n in sorted(unmatched_combos.items())
+        ],
+    }
+
+
+def explain_charge_program_shortage(conn: sqlite3.Connection) -> str:
+    """표본 부족의 충전 프로그램 관련 원인을 한국어 한 문장으로 설명한다(없으면 빈 문자열)."""
+    cov = get_charge_program_coverage(conn)
+    if cov["lot_count"] == 0 or cov["unmatched_lot_count"] == 0:
+        return ""
+    if cov["spec_count"] == 0:
+        return " [원인: 충전 프로그램 기준표가 비어 있어 이탈도를 계산할 수 없습니다]"
+    shown = ", ".join(
+        f"{c['rated_capacity']:g}Ah/{c['buyer_code']}({c['lot_count']}건)"
+        for c in cov["unmatched_combos"][:8]
+    )
+    more = "" if len(cov["unmatched_combos"]) <= 8 else f" 외 {len(cov['unmatched_combos']) - 8}개 조합"
+    return (
+        f" [원인: 로트 {cov['unmatched_lot_count']}/{cov['lot_count']}건이 충전 프로그램 기준표에 "
+        f"없는 (정격용량/바이어) 조합이라 제외됨 — {shown}{more}. 해당 조합을 기준표에 추가해 업로드하세요]"
+    )
 
 
 def get_charge_program_specs(conn: sqlite3.Connection) -> list[dict]:

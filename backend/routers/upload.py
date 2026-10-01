@@ -62,12 +62,15 @@ async def upload_process_csv(
 
     conn = repo.get_connection()
     try:
+        if not dry_run:
+            repo.seed_charge_program_if_empty(conn)  # 기준표 없이 올라가 이탈도가 NULL이 되는 것 방지(.docs/41)
         result = repo.ingest_process_rows(
             conn, rows, filename=file.filename or "process_data.csv", dry_run=dry_run
         )
+        coverage = None if dry_run else repo.get_charge_program_coverage(conn)
     finally:
         conn.close()
-    return {"file": "process", "row_count": len(rows), **result}
+    return {"file": "process", "row_count": len(rows), **result, "charge_program_coverage": coverage}
 
 
 @router.post("/upload/test")

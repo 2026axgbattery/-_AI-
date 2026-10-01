@@ -37,3 +37,4 @@ frontend/.next/
 # 실제 데이터 기반 수치·화면 스크린샷이 들어간 보고용 산출물 — 로컬에만 보관
 reports/
 OUTPUT_PHOTO/
+!backend/seed/*.xlsx

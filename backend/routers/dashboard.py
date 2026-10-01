@@ -38,11 +38,14 @@ def _run_stage(stage: str) -> dict:
     get_rows, fit = _STAGE_RUNNERS[stage]
     conn = repo.get_connection()
     try:
+        repo.seed_charge_program_if_empty(conn)  # 기준표가 비어 있으면 자가치유(.docs/41)
         rows = get_rows(conn)
         try:
             result = fit(rows)
         except InsufficientSampleError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=400, detail=f"{exc}{repo.explain_charge_program_shortage(conn)}"
+            ) from exc
         run_id = repo.save_analysis_run(conn, stage, result)
         return {"run_id": run_id, **result}
     finally:
