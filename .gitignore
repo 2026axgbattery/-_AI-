@@ -38,3 +38,7 @@ frontend/.next/
 reports/
 OUTPUT_PHOTO/
 !backend/seed/*.xlsx
+
+# API 키 (절대 커밋 금지)
+.env*
+제출물_영상/.env.elevenlabs

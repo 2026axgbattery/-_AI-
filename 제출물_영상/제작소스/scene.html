@@ -1,0 +1,208 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+:root{--ink:#1F3742;--ink4:#4C5F68;--gray:#A2AAAD;--bg:#F6F6F5;--card:#fff;--line:#D9D9D8;--g:#0097A9;--g7:#006A76}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:var(--bg);font-family:Pretendard,"Noto Sans KR",sans-serif;color:var(--ink);word-break:keep-all}
+.abs{position:absolute}
+.scene{position:absolute;inset:0;opacity:0}
+.logo{position:absolute;left:96px;top:56px;height:36px}
+.chap{position:absolute;right:96px;top:62px;font-size:24px;font-weight:600;color:var(--ink4)}
+.h1{position:absolute;left:96px;top:130px;font-size:72px;font-weight:800;letter-spacing:-1px}
+.claim{position:absolute;left:96px;top:226px;font-size:34px;font-weight:600;color:var(--g7)}
+.card{position:absolute;background:#fff;border:2px solid var(--line);border-radius:20px;box-shadow:0 2px 8px rgba(31,55,66,.12)}
+.lbl{font-size:26px;font-weight:700;color:var(--ink4)}
+.big{font-size:56px;font-weight:800}
+.txt{font-size:30px;font-weight:500;color:var(--ink4);line-height:1.4}
+.chip{position:absolute;background:var(--bg);border:2px solid var(--line);border-radius:12px;padding:12px 22px;font-size:30px;font-weight:700}
+.dot{position:absolute;width:32px;height:32px;border-radius:50%;background:var(--line);border:3px solid var(--line)}
+.bar{position:absolute;height:22px;border-radius:11px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--g)}
+.arrow{position:absolute;height:6px;background:var(--ink);border-radius:3px}
+.arrow:after{content:"";position:absolute;right:-4px;top:-12px;border-left:24px solid var(--ink);border-top:15px solid transparent;border-bottom:15px solid transparent}
+#s3>:not(.logo):not(.chap):not(.h1):not(.claim){margin-top:110px}
+</style>
+<body>
+<!-- 타이틀 -->
+<div class="scene" id="sTitle" style="background:var(--ink)">
+  <img class="abs" src="sebang_wordmark_white.png" style="left:96px;top:72px;height:56px">
+  <div class="abs" id="tt1" style="left:96px;top:380px;font-size:104px;font-weight:800;color:#fff;line-height:1.2">시험 전에<br>합격 여부를 미리 맞힌다</div>
+  <div class="abs" id="tt2" style="left:96px;top:690px;font-size:38px;font-weight:500;color:#D2D7D9">데이터를 올리면 포화도와 제품 성능을 자동으로 예측하는 프로그램</div>
+  <div class="abs" id="tt3" style="left:96px;top:960px;font-size:26px;font-weight:500;color:#A5AFB3">창원품질경영팀 · 더미(연습용) 데이터 기준</div>
+</div>
+
+<!-- 3장 -->
+<div class="scene" id="s3">
+  <img class="logo" src="sebang_wordmark_dark.png">
+  <div class="chap">설계</div>
+  <div class="h1">어떻게 만들었나</div>
+  <div class="claim">업로드만 하면, 사람 작업 없이 자동으로 예측합니다</div>
+
+  <div class="card" id="b1" style="left:96px;top:330px;width:500px;height:400px;padding:32px 36px">
+    <div class="lbl">① SPC에 입력된 공정 데이터</div>
+  </div>
+  <div class="chip" id="c1" style="left:140px;top:430px">SPC 입력 공정 데이터</div>
+  <div class="chip" id="c2" style="left:140px;top:516px">업로드 후 클릭 한 번</div>
+  
+  <div class="abs txt" id="c4" style="left:140px;top:610px;font-size:26px;color:var(--ink4)">사람의 계산·대조 없이 자동으로 진행</div>
+
+  <div class="arrow" id="a1" style="left:612px;top:527px;width:0"></div>
+
+  <div class="card" id="b2" style="left:710px;top:330px;width:500px;height:400px;padding:32px 36px">
+    <div class="lbl">② 예측: 포화도</div>
+    <div class="big" style="margin-top:56px">포화도</div>
+    <div class="txt" style="margin-top:12px">전해액이 얼마나<br>잘 채워졌는가</div>
+  </div>
+  <div class="bar" id="bar2" style="left:746px;top:650px;width:420px"><i></i></div>
+
+  <div class="arrow" id="a2" style="left:1226px;top:527px;width:0"></div>
+  <div class="abs txt" id="a2l" style="left:1196px;top:456px;width:140px;font-size:22px;text-align:center;color:var(--g7);font-weight:700">그 결과로<br>확인</div>
+
+  <div class="card" id="b3" style="left:1324px;top:330px;width:500px;height:400px;padding:32px 36px">
+    <div class="lbl">③ 확인: 제품 성능</div>
+    <div class="big" style="margin-top:56px">제품 성능</div>
+    <div class="txt" style="margin-top:12px">20시간 용량 ·<br>저온 시동 성능</div>
+  </div>
+  <div class="bar" id="bar3" style="left:1360px;top:650px;width:420px"><i></i></div>
+
+</div>
+
+<!-- 4장 -->
+<div class="scene" id="s4">
+  <img class="logo" src="sebang_wordmark_dark.png">
+  <div class="chap">95% 측정</div>
+  <div class="h1">95%는 어떻게 쟀나</div>
+  <div class="claim" id="claim4">처음 보는 60건으로 채점했습니다</div>
+  <div id="dots"></div>
+  <div class="abs" id="legend" style="left:96px;top:1010px;font-size:26px;font-weight:600;color:var(--ink4)"></div>
+
+  <div class="card" id="cA" style="left:1130px;top:330px;width:694px;height:130px;padding:24px 32px"><div class="lbl">학습</div><div class="big" style="font-size:48px">240건으로 가르침</div></div>
+  <div class="card" id="cB" style="left:1130px;top:480px;width:694px;height:130px;padding:24px 32px;border-color:var(--g)"><div class="lbl" style="color:var(--g7)">채점</div><div class="big" style="font-size:48px">처음 보는 60건</div></div>
+  <div class="card" id="cC" style="left:1130px;top:630px;width:694px;height:200px;padding:24px 32px"><div class="lbl">채점 기준</div><div class="txt" style="color:var(--ink);font-size:34px;margin-top:6px">점수 차이 ✕<br><b>합격/불합격이 실제와 같은가 ○</b></div></div>
+
+  <div class="card" id="cR" style="left:1130px;top:330px;width:694px;height:330px;padding:32px 40px;border-color:var(--g);border-width:3px">
+    <div class="lbl">실제와 같게 맞힌 건수</div>
+    <div class="abs" id="cnt" style="left:40px;top:84px;font-size:130px;font-weight:800;color:var(--ink)">0 / 60</div>
+    <div class="abs" id="pct" style="left:40px;top:236px;font-size:64px;font-weight:800;color:var(--g7)">95%</div>
+  </div>
+  <div class="card" id="cT" style="left:1130px;top:690px;width:694px;height:130px;padding:24px 32px">
+    <div class="lbl">믿을 만한 기준 90%</div>
+    <div class="bar" style="left:32px;top:76px;width:630px;height:26px"><i id="tbar" style="width:0"></i></div>
+        <div class="abs" id="tmark" style="left:599px;top:70px;width:4px;height:38px;background:var(--ink)"></div>
+  </div>
+  <div class="card" id="cE" style="left:1130px;top:840px;width:694px;height:140px;padding:24px 32px">
+    <div class="lbl">저온 시동 성능 (참고)</div>
+    <div class="abs" style="left:32px;top:70px;font-size:36px;font-weight:700">유럽 규격 90.0%  ·  미국 규격 93.3%</div>
+  </div>
+</div>
+
+
+<!-- 6장: 시험 없이 나머지 로트 예측 -->
+<div class="scene" id="s6">
+  <img class="logo" src="sebang_wordmark_dark.png">
+  <div class="chap">확장 예측</div>
+  <div class="h1">여러 번 시험하지 않아도 됩니다</div>
+  <div class="claim">시험을 마친 제품으로, 나머지 로트의 20시간 용량까지 미리 예측합니다</div>
+  <div class="card" id="L6" style="left:96px;top:330px;width:760px;height:500px;padding:32px 40px">
+    <div class="lbl">① 성능 시험을 마친 제품</div>
+    <div class="big" style="font-size:88px;margin-top:20px">300건</div>
+    <div class="txt">실제 시험 결과로 학습</div>
+  </div>
+  <div class="arrow" id="A6" style="left:880px;top:578px;width:0"></div>
+  <div class="card" id="R6" style="left:1064px;top:330px;width:760px;height:500px;padding:32px 40px;border:3px solid var(--g)">
+    <div class="lbl" style="color:var(--g7)">② 아직 시험하지 않은 나머지 로트</div>
+    <div class="big" style="font-size:88px;margin-top:20px;color:var(--g7)">4,692건</div>
+    <div class="txt">20시간 용량(Z)을 미리 예측</div>
+  </div>
+  <div id="dots6"></div>
+  <div class="abs" id="cap6" style="left:96px;top:846px;font-size:24px;font-weight:600;color:var(--ink4)">점 1개 ≈ 50건 · 더미(연습용) 데이터 기준</div>
+  <div class="abs" id="ban6" style="left:96px;top:890px;width:1728px;height:130px;border-radius:20px;background:var(--ink);color:#fff;font-size:40px;font-weight:800;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.3">시험을 여러 번 돌리지 않아도,<br>공정 데이터만 올리면 전체 로트를 한 번에 확인</div>
+</div>
+
+<!-- 마무리: 얻는 것 / 더 좋아질 점 -->
+<div class="scene" id="sEnd">
+  <img class="logo" src="sebang_wordmark_dark.png">
+  <div class="chap">정리</div>
+  <div class="h1">이 프로그램으로 얻는 것</div>
+    <div class="card" id="gC" style="left:96px;top:290px;width:1728px;height:640px;padding:32px 40px;border:3px solid var(--g)">
+    <div class="lbl" style="color:var(--g7);font-size:30px">얻는 것</div>
+  </div>
+  <div class="abs" id="g1" style="left:136px;top:390px;width:1500px;font-size:52px;font-weight:800;line-height:1.3"><span style="color:var(--g7)">✓</span>&nbsp; 데이터만 올리면<br>&nbsp;&nbsp;&nbsp;&nbsp;합격 여부를 미리 확인</div>
+  <div class="abs" id="g2" style="left:136px;top:560px;width:1500px;font-size:52px;font-weight:800;line-height:1.3"><span style="color:var(--g7)">✓</span>&nbsp; 시험하지 않은 로트까지<br>&nbsp;&nbsp;&nbsp;&nbsp;한 번에 확인</div>
+  <div class="abs" id="g3" style="left:136px;top:730px;width:1500px;font-size:52px;font-weight:800;line-height:1.3"><span style="color:var(--g7)">✓</span>&nbsp; 불합격 시 고칠 조건을<br>&nbsp;&nbsp;&nbsp;&nbsp;순서대로 확인</div>
+  <div class="abs" style="left:96px;top:980px;font-size:22px;font-weight:500;color:var(--ink4)">더미(연습용) 데이터 기준 · Music: "Calm Ambient 1" by The Cynic Project (cynicmusic.com) · CC0</div>
+</div>
+
+<script>
+const D=__TIMING__;
+const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const eo=x=>1-Math.pow(1-clamp(x),3);
+const $=id=>document.getElementById(id);
+const s3=i=>D.T0+D.b3[i], s4=i=>D.T1+D.b4[i], s6=i=>D.T3+D.b6[i], s7=i=>D.T4+D.b7[i];
+function show(el,t0,T,dur=.5,dy=24){const p=eo((T-t0)/dur);el.style.opacity=p;el.style.transform=`translateY(${(1-p)*dy}px)`;}
+function hide(el,t0,T,dur=.4){if(T>=t0){el.style.opacity=1-eo((T-t0)/dur)}}
+// 점 생성
+const dots=[];const dc=$('dots');
+for(let i=0;i<300;i++){const d=document.createElement('div');d.className='dot';
+  const c=i%20,r=Math.floor(i/20);d.dataset.x=96+c*50;d.dataset.y=330+r*44;d.style.left=d.dataset.x+'px';d.style.top=d.dataset.y+'px';d.style.opacity=0;dc.appendChild(d);dots.push(d);}
+const d6=[];const d6c=$('dots6');
+for(let i=0;i<100;i++){const d=document.createElement('div');d.className='dot';
+  if(i<6){d.dataset.x=130+i*50;d.dataset.y=700;d.style.background='#1F3742';d.style.borderColor='#1F3742';}
+  else{const k=i-6,c=k%16,r=Math.floor(k/16);d.dataset.x=1096+c*44;d.dataset.y=596+r*36;d.style.background='#fff';d.style.borderColor='#0097A9';}
+  d.style.left=d.dataset.x+'px';d.style.top=d.dataset.y+'px';d.style.opacity=0;d6c.appendChild(d);d6.push(d);}
+const WRONG=new Set([12,31,50]); // 60개 중 틀린 3건(위치는 연출용)
+function scene(el,T,a,b,fi=.5,fo=.5){el.style.opacity=clamp(Math.min((T-a)/fi,(b-T)/fo));}
+window.setT=function(T){
+  // 타이틀
+  scene($('sTitle'),T,-1,D.T0-.2,.01,.5);
+  show($('tt1'),0.3,T,.8,30);show($('tt2'),1.2,T,.7,20);show($('tt3'),1.8,T,.6,10);
+  // 3장
+  scene($('s3'),T,D.T0-.3,D.T1-.5,.5,.5);
+  show($('b1'),s3(0)+.3,T);show($('c1'),D.p3.c1,T);show($('c2'),D.p3.c2,T);show($('c4'),D.p3.c4,T);
+  show($('b2'),s3(2)+.1,T);
+  $('bar2').firstElementChild.style.width=(eo((T-(s3(2)+1.2))/2.5)*92)+'%';
+  $('a1').style.width=(eo((T-(s3(2)-.4))/.5)*88)+'px';
+  show($('b3'),s3(3)+.1,T);
+  $('a2').style.width=(eo((T-(s3(3)-.2))/.5)*88)+'px';
+  show($('a2l'),s3(3)+.2,T,.4,8);
+  $('bar3').firstElementChild.style.width=(eo((T-(s3(3)+1.2))/2.5)*88)+'%';
+  // 4장
+  scene($('s4'),T,D.T1-.3,D.S4END,.5,.5);
+  const t1=s4(1),t2=s4(2),t5=s4(5);
+  dots.forEach((d,i)=>{
+    const ap=eo((T-(t1+i*0.012))/.3);
+    const isVal=i>=240;
+    d.style.opacity=ap;
+    let bg='#D0D0CE',bd='#D0D0CE';
+    if(!isVal && T>t1+3.4){bg='#1F3742';bd='#1F3742';}
+    let dy=0;
+    if(isVal && T>t2){dy=eo((T-t2)/.8)*30;bd='#0097A9';bg='#FFFFFF';}
+    if(isVal && T>t5){
+      const k=i-240, ft=t5+ k*0.05;
+      if(T>ft){ if(WRONG.has(k)){bg='#A2AAAD';bd='#1F3742';} else {bg='#0097A9';bd='#0097A9';} }
+    }
+    d.style.background=bg;d.style.borderColor=bd;d.style.transform=`translateY(${dy}px)`;
+  });
+  // 카드
+  show($('cA'),t1+3.2,T);show($('cB'),t2+.2,T);show($('cC'),s4(4)+.1,T);
+  const fl=t5-.1; ['cA','cB','cC'].forEach(id=>hide($(id),fl,T));
+  show($('cR'),t5,T);
+  // 카운터
+  let n=0;for(let k=0;k<60;k++){if(T>t5+k*0.05 && !WRONG.has(k))n++;}
+  $('cnt').textContent=n+' / 60';
+  $('pct').style.opacity=T>t5+3.1?eo((T-(t5+3.1))/.5):0;
+  show($('cT'),s4(6),T);
+  $('tbar').style.width=(eo((T-(s4(6)+.4))/1.2)*95)+'%';
+  show($('cE'),s4(7),T);
+  // 6장
+  scene($('s6'),T,D.T3-.3,D.END,.5,.5);
+  show($('L6'),s6(1)-.3,T);
+  d6.forEach((d,i)=>{const t0=i<6?s6(1)+.2+i*.12:s6(1)+2.4+(i-6)*.025;d.style.opacity=eo((T-t0)/.25)*clamp((T<D.T3+0.0?0:1))*1;});
+  $('A6').style.width=(eo((T-(s6(1)+1.8))/.5)*140)+'px';
+  show($('R6'),s6(1)+2.2,T);show($('cap6'),s6(1)+2.6,T,.4,6);show($('ban6'),s6(2)-2.2,T,.6,20);
+  // 마무리
+  scene($('sEnd'),T,D.END-.3,D.TOT+1,.6,.01);
+  show($('gC'),D.T4+.1,T);show($('g1'),s7(0)+.3,T);show($('g2'),s7(1)+.1,T);show($('g3'),s7(2)+.1,T);
+  document.getElementById('dots6').style.opacity=clamp((D.END-T)/.4+0.0);
+};
+</script>
